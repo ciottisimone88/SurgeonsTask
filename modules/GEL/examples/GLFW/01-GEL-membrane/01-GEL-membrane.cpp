@@ -396,8 +396,8 @@ int main(int argc, char* argv[])
 
     // interaction stiffness between tool and deformable model 
     stiffness_l = 25;
-    stiffness_c = 100;
-    stiffness_r = 200;
+    stiffness_c = 75;
+    stiffness_r = 125;
 
 
     //-----------------------------------------------------------------------
@@ -490,7 +490,8 @@ int main(int argc, char* argv[])
     cGELSkeletonNode::s_default_showFrame     = true;
     cGELSkeletonNode::s_default_color.setBlueCornflower();
     cGELSkeletonNode::s_default_useGravity    = true;
-    cGELSkeletonNode::s_default_gravity.set(0.00, 0.00,-9.81);
+    //cGELSkeletonNode::s_default_gravity.set(0.00, 0.00,-9.81);
+    cGELSkeletonNode::s_default_gravity.set(0.00, 0.00, 0.00);
     radius = cGELSkeletonNode::s_default_radius;
 
     // use internal skeleton as deformable model
