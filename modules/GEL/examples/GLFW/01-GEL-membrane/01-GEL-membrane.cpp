@@ -164,7 +164,9 @@ double deviceRadius;
 double radius;
 
 // stiffness properties between the haptic device tool and the model (GEM)
-double stiffness;
+double stiffness_l;
+double stiffness_c;
+double stiffness_r;
 
 
 //---------------------------------------------------------------------------
@@ -393,7 +395,9 @@ int main(int argc, char* argv[])
     device->m_material->setShininess(100);
 
     // interaction stiffness between tool and deformable model 
-    stiffness = 100;
+    stiffness_l = 25;
+    stiffness_c = 100;
+    stiffness_r = 200;
 
 
     //-----------------------------------------------------------------------
@@ -819,20 +823,22 @@ void updateHaptics(void)
         for (int z = 0; z < kNumNodeZ; z++) {
             for (int y = 0; y < kNumNodeY; y++) {
                 for (int x = 0; x < kNumNodeX; x++) {
-                    cVector3d nodePos = nodes_l[x][y][z]->m_pos;
-                    cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness);
+                    //cVector3d nodePos = nodes_l[x][y][z]->m_pos;
+                    cVector3d nodePos = nodes_l[x][y][z]->m_pos + cVector3d(0.0, -kDefObjOffset, 0.0);
+                    cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_l);
                     cVector3d tmpfrc = -1.0 * f;
                     nodes_l[x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                     //
                     nodePos = nodes_c[x][y][z]->m_pos;
-                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness);
+                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_c);
                     tmpfrc = -1.0 * f;
                     nodes_c[x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                     //
-                    nodePos = nodes_r[x][y][z]->m_pos;
-                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness);
+                    //nodePos = nodes_r[x][y][z]->m_pos;
+                    nodePos = nodes_r[x][y][z]->m_pos + cVector3d(0.0, kDefObjOffset, 0.0);
+                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_r);
                     tmpfrc = -1.0 * f;
                     nodes_r[x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
@@ -845,6 +851,9 @@ void updateHaptics(void)
 
         // scale force
         force.mul(deviceForceScale / workspaceScaleFactor);
+
+        // DEBUG INFO
+        std::cout << force << "\n";
 
         // send forces to haptic device
         hapticDevice->setForce(force);
