@@ -452,24 +452,46 @@ int main(int argc, char* argv[])
     defObject_r->setMaterial(mat, true);
 
     // let's create a some environment mapping
-    shared_ptr<cTexture2d> texture(new cTexture2d());
-    fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/shadow.jpg"));
+    shared_ptr<cTexture2d> texture_l(new cTexture2d());
+    fileload = texture_l->loadFromFile(RESOURCE_PATH("../resources/images/bio.jpg"));
     if (!fileload) {
          cout << "Error - Texture failed to load correctly." << endl;
         close();
         return (-1);
     }
+    shared_ptr<cTexture2d> texture_c(new cTexture2d());
+    fileload = texture_c->loadFromFile(RESOURCE_PATH("../resources/images/shadow.jpg"));
+    if (!fileload) {
+        cout << "Error - Texture failed to load correctly." << endl;
+        close();
+        return (-1);
+    }
+    shared_ptr<cTexture2d> texture_r(new cTexture2d());
+    fileload = texture_r->loadFromFile(RESOURCE_PATH("../resources/images/stone.jpg"));
+    if (!fileload) {
+        cout << "Error - Texture failed to load correctly." << endl;
+        close();
+        return (-1);
+    }
 
     // enable environmental texturing
-    texture->setEnvironmentMode(GL_DECAL);
-    texture->setSphericalMappingEnabled(true);
+    texture_l->setEnvironmentMode(GL_DECAL);
+    texture_l->setSphericalMappingEnabled(true);
+    // enable environmental texturing
+    texture_c->setEnvironmentMode(GL_DECAL);
+    texture_c->setSphericalMappingEnabled(true);
+    // enable environmental texturing
+    texture_r->setEnvironmentMode(GL_DECAL);
+    texture_r->setSphericalMappingEnabled(true);
 
     // assign and enable texturing
-    defObject_l->setTexture(texture, true);
+    defObject_l->setTexture(texture_l, true);
     defObject_l->setUseTexture(true, true);
-    defObject_c->setTexture(texture, true);
+    //
+    defObject_c->setTexture(texture_c, true);
     defObject_c->setUseTexture(true, true);
-    defObject_r->setTexture(texture, true);
+    //
+    defObject_r->setTexture(texture_r, true);
     defObject_r->setUseTexture(true, true);
 
     // set object to be transparent
@@ -507,6 +529,7 @@ int main(int argc, char* argv[])
                 nodes_l[x][y][z] = newNode_l;
                 defObject_l->m_nodes.push_front(newNode_l);
                 newNode_l->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
+                newNode_l->m_kDampingPos = 0.5 * cGELSkeletonNode::s_default_kDampingPos;;
                 //
                 cGELSkeletonNode* newNode_c = new cGELSkeletonNode();
                 nodes_c[x][y][z] = newNode_c;
@@ -517,6 +540,8 @@ int main(int argc, char* argv[])
                 nodes_r[x][y][z] = newNode_r;
                 defObject_r->m_nodes.push_front(newNode_r);
                 newNode_r->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
+                newNode_r->m_kDampingPos = 2.0 * cGELSkeletonNode::s_default_kDampingPos;
+
                 // set corner nodes as fixed
                 if ((x == 0 && y == 9) || (x == 9 && y == 0) || (x == 9 && y == 9) || (x == 0 && y == 0)) {
                     newNode_l->m_fixed = true;
@@ -537,6 +562,7 @@ int main(int argc, char* argv[])
     for (int z = 0; z < kNumNodeZ; z++) {
         for (int y = 0; y < kNumNodeY - 1; y++) {
             for (int x = 0; x < kNumNodeX - 1; x++) {
+                cGELSkeletonLink::s_default_kSpringElongation = 0.5 * 25.0;
                 cGELSkeletonLink* newLinkX0_l = new cGELSkeletonLink(nodes_l[x + 0][y + 0][z], nodes_l[x + 1][y + 0][z]);
                 cGELSkeletonLink* newLinkX1_l = new cGELSkeletonLink(nodes_l[x + 0][y + 1][z], nodes_l[x + 1][y + 1][z]);
                 cGELSkeletonLink* newLinkY0_l = new cGELSkeletonLink(nodes_l[x + 0][y + 0][z], nodes_l[x + 0][y + 1][z]);
@@ -546,6 +572,7 @@ int main(int argc, char* argv[])
                 defObject_l->m_links.push_front(newLinkY0_l);
                 defObject_l->m_links.push_front(newLinkY1_l);
                 //
+                cGELSkeletonLink::s_default_kSpringElongation = 25.0;
                 cGELSkeletonLink* newLinkX0_c = new cGELSkeletonLink(nodes_c[x + 0][y + 0][z], nodes_c[x + 1][y + 0][z]);
                 cGELSkeletonLink* newLinkX1_c = new cGELSkeletonLink(nodes_c[x + 0][y + 1][z], nodes_c[x + 1][y + 1][z]);
                 cGELSkeletonLink* newLinkY0_c = new cGELSkeletonLink(nodes_c[x + 0][y + 0][z], nodes_c[x + 0][y + 1][z]);
@@ -555,6 +582,7 @@ int main(int argc, char* argv[])
                 defObject_c->m_links.push_front(newLinkY0_c);
                 defObject_c->m_links.push_front(newLinkY1_c);
                 //
+                cGELSkeletonLink::s_default_kSpringElongation = 4.0 * 25.0;
                 cGELSkeletonLink* newLinkX0_r = new cGELSkeletonLink(nodes_r[x + 0][y + 0][z], nodes_r[x + 1][y + 0][z]);
                 cGELSkeletonLink* newLinkX1_r = new cGELSkeletonLink(nodes_r[x + 0][y + 1][z], nodes_r[x + 1][y + 1][z]);
                 cGELSkeletonLink* newLinkY0_r = new cGELSkeletonLink(nodes_r[x + 0][y + 0][z], nodes_r[x + 0][y + 1][z]);
@@ -852,6 +880,8 @@ void updateHaptics(void)
 
         // scale force
         force.mul(deviceForceScale / workspaceScaleFactor);
+
+        force += cVector3d(0.0, 0.0, 0.981);
 
         // DEBUG INFO
         std::cout << force << "\n";
