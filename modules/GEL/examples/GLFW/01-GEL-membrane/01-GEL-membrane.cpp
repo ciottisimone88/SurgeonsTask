@@ -893,7 +893,7 @@ void updateHaptics(void)
         //force += cVector3d(0.0, 0.0, 0.981);
 
         // DEBUG INFO
-        std::cout << force << "\n";
+        std::cout << time << "," << std::fabs(pos.z()) << "," << force.length() << "\n";
 
         // send forces to haptic device
         hapticDevice->setForce(force);
