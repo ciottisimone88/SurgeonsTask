@@ -865,6 +865,7 @@ void updateHaptics(void)
                     cVector3d nodePos = nodes_l[x][y][z]->m_pos + cVector3d(0.0, -kDefObjOffset, 0.0);
                     cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_l, vel);
                     cVector3d tmpfrc = -2.5 * f;
+                    //cVector3d tmpfrc = -1.0 * f;
                     nodes_l[x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                     //
@@ -878,6 +879,7 @@ void updateHaptics(void)
                     nodePos = nodes_r[x][y][z]->m_pos + cVector3d(0.0, kDefObjOffset, 0.0);
                     f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_r, vel);
                     tmpfrc = -0.25 * f;
+                    //tmpfrc = -1.0 * f;
                     nodes_r[x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                 }
@@ -896,7 +898,7 @@ void updateHaptics(void)
         std::cout << std::fabs(pos.z()) << "," << force.length() << "\r";
 
         // send forces to haptic device
-        hapticDevice->setForce(force);
+       hapticDevice->setForce(force);
 
         // signal frequency counter
         freqCounterHaptics.signal(1);
