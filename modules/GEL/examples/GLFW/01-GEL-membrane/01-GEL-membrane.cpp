@@ -196,7 +196,8 @@ cVector3d computeForce(const cVector3d& a_cursor,
                        double a_cursorRadius,
                        const cVector3d& a_spherePos,
                        double a_radius,
-                       double a_stiffness);
+                       double a_stiffness,
+                       const cVector3d& a_cursorVel);
 
 
 //---------------------------------------------------------------------------
@@ -398,8 +399,7 @@ int main(int argc, char* argv[])
     stiffness_l = 25;
     stiffness_c = 75;
     stiffness_r = 125;
-
-
+    
     //-----------------------------------------------------------------------
     // COMPOSE THE VIRTUAL SCENE
     //-----------------------------------------------------------------------
@@ -529,18 +529,21 @@ int main(int argc, char* argv[])
                 nodes_l[x][y][z] = newNode_l;
                 defObject_l->m_nodes.push_front(newNode_l);
                 newNode_l->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
-                newNode_l->m_kDampingPos = 0.5 * cGELSkeletonNode::s_default_kDampingPos;;
+                newNode_l->m_kDampingPos = 0.1 * 0.25 * 25.0;
+                //newNode_l->m_kDampingPos = 0.25 * cGELSkeletonNode::s_default_kDampingPos;;
                 //
                 cGELSkeletonNode* newNode_c = new cGELSkeletonNode();
                 nodes_c[x][y][z] = newNode_c;
                 defObject_c->m_nodes.push_front(newNode_c);
                 newNode_c->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
+                newNode_c->m_kDampingPos = 0.1 * 0.25 * 75.0;
                 //
                 cGELSkeletonNode* newNode_r = new cGELSkeletonNode();
                 nodes_r[x][y][z] = newNode_r;
                 defObject_r->m_nodes.push_front(newNode_r);
                 newNode_r->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
-                newNode_r->m_kDampingPos = 2.0 * cGELSkeletonNode::s_default_kDampingPos;
+                //newNode_r->m_kDampingPos = 4.0 * cGELSkeletonNode::s_default_kDampingPos;
+                newNode_r->m_kDampingPos = 0.1 * 0.25 * 125.0;
 
                 // set corner nodes as fixed
                 if ((x == 0 && y == 9) || (x == 9 && y == 0) || (x == 9 && y == 9) || (x == 0 && y == 0)) {
@@ -562,7 +565,8 @@ int main(int argc, char* argv[])
     for (int z = 0; z < kNumNodeZ; z++) {
         for (int y = 0; y < kNumNodeY - 1; y++) {
             for (int x = 0; x < kNumNodeX - 1; x++) {
-                cGELSkeletonLink::s_default_kSpringElongation = 0.5 * 25.0;
+                //cGELSkeletonLink::s_default_kSpringElongation = 0.5 * 25.0;
+                cGELSkeletonLink::s_default_kSpringElongation = 0.25 * 25.0;
                 cGELSkeletonLink* newLinkX0_l = new cGELSkeletonLink(nodes_l[x + 0][y + 0][z], nodes_l[x + 1][y + 0][z]);
                 cGELSkeletonLink* newLinkX1_l = new cGELSkeletonLink(nodes_l[x + 0][y + 1][z], nodes_l[x + 1][y + 1][z]);
                 cGELSkeletonLink* newLinkY0_l = new cGELSkeletonLink(nodes_l[x + 0][y + 0][z], nodes_l[x + 0][y + 1][z]);
@@ -572,7 +576,8 @@ int main(int argc, char* argv[])
                 defObject_l->m_links.push_front(newLinkY0_l);
                 defObject_l->m_links.push_front(newLinkY1_l);
                 //
-                cGELSkeletonLink::s_default_kSpringElongation = 25.0;
+                //cGELSkeletonLink::s_default_kSpringElongation = 25.0;
+                cGELSkeletonLink::s_default_kSpringElongation = 0.25 * 75.0;
                 cGELSkeletonLink* newLinkX0_c = new cGELSkeletonLink(nodes_c[x + 0][y + 0][z], nodes_c[x + 1][y + 0][z]);
                 cGELSkeletonLink* newLinkX1_c = new cGELSkeletonLink(nodes_c[x + 0][y + 1][z], nodes_c[x + 1][y + 1][z]);
                 cGELSkeletonLink* newLinkY0_c = new cGELSkeletonLink(nodes_c[x + 0][y + 0][z], nodes_c[x + 0][y + 1][z]);
@@ -582,7 +587,8 @@ int main(int argc, char* argv[])
                 defObject_c->m_links.push_front(newLinkY0_c);
                 defObject_c->m_links.push_front(newLinkY1_c);
                 //
-                cGELSkeletonLink::s_default_kSpringElongation = 4.0 * 25.0;
+                //cGELSkeletonLink::s_default_kSpringElongation = 4.0 * 25.0;
+                cGELSkeletonLink::s_default_kSpringElongation = 0.25 * 125.0;
                 cGELSkeletonLink* newLinkX0_r = new cGELSkeletonLink(nodes_r[x + 0][y + 0][z], nodes_r[x + 1][y + 0][z]);
                 cGELSkeletonLink* newLinkX1_r = new cGELSkeletonLink(nodes_r[x + 0][y + 1][z], nodes_r[x + 1][y + 1][z]);
                 cGELSkeletonLink* newLinkY0_r = new cGELSkeletonLink(nodes_r[x + 0][y + 0][z], nodes_r[x + 0][y + 1][z]);
@@ -844,6 +850,9 @@ void updateHaptics(void)
         pos.mul(workspaceScaleFactor);
         device->setLocalPos(pos);
 
+        cVector3d vel;
+        hapticDevice->getLinearVelocity(vel);
+
         // clear all external forces
         defWorld->clearExternalForces();
 
@@ -854,21 +863,21 @@ void updateHaptics(void)
                 for (int x = 0; x < kNumNodeX; x++) {
                     //cVector3d nodePos = nodes_l[x][y][z]->m_pos;
                     cVector3d nodePos = nodes_l[x][y][z]->m_pos + cVector3d(0.0, -kDefObjOffset, 0.0);
-                    cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_l);
-                    cVector3d tmpfrc = -1.0 * f;
+                    cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_l, vel);
+                    cVector3d tmpfrc = -2.5 * f;
                     nodes_l[x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                     //
                     nodePos = nodes_c[x][y][z]->m_pos;
-                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_c);
+                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_c, vel);
                     tmpfrc = -1.0 * f;
                     nodes_c[x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                     //
                     //nodePos = nodes_r[x][y][z]->m_pos;
                     nodePos = nodes_r[x][y][z]->m_pos + cVector3d(0.0, kDefObjOffset, 0.0);
-                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_r);
-                    tmpfrc = -1.0 * f;
+                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_r, vel);
+                    tmpfrc = -0.25 * f;
                     nodes_r[x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                 }
@@ -881,7 +890,7 @@ void updateHaptics(void)
         // scale force
         force.mul(deviceForceScale / workspaceScaleFactor);
 
-        force += cVector3d(0.0, 0.0, 0.981);
+        //force += cVector3d(0.0, 0.0, 0.981);
 
         // DEBUG INFO
         std::cout << force << "\n";
@@ -903,7 +912,8 @@ cVector3d computeForce(const cVector3d& a_cursor,
                        double a_cursorRadius,
                        const cVector3d& a_spherePos,
                        double a_radius,
-                       double a_stiffness)
+                       double a_stiffness,
+                       const cVector3d& a_cursorVel)
 {
     // compute the reaction forces between the tool and the ith sphere.
     cVector3d force;
@@ -925,6 +935,8 @@ cVector3d computeForce(const cVector3d& a_cursor,
     double penetrationDistance = (a_cursorRadius + a_radius) - vSphereCursor.length();
     cVector3d forceDirection = cNormalize(vSphereCursor);
     force = cMul( penetrationDistance * a_stiffness, forceDirection);
+
+    //force = force + 
 
     // return result
     return (force);
