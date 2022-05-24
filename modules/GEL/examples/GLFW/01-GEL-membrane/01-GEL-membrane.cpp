@@ -49,6 +49,7 @@
 
 #include <fstream>
 #include <string>
+#include <sstream>
 
 //------------------------------------------------------------------------------
 using namespace chai3d;
@@ -136,6 +137,9 @@ int swapInterval = 1;
 // root resource path
 string resourceRoot;
 
+bool force_over_limit{ false };
+bool trial_started{ false };
+
 //---------------------------------------------------------------------------
 // GEL
 //---------------------------------------------------------------------------
@@ -151,7 +155,7 @@ std::int32_t active_point_y{ -1 };
 std::int32_t active_surface{ -1 };// -1 -> INVALID
 std::int32_t multimodal_feedback{ 0 };
 
-std::vector<std::vector<std::int32_t>> stimuli = { {1,1,1,0}, {1,2,0,1}, {2,0,1,1}, {2,1,2,0} };
+std::vector<std::vector<std::int32_t>> stimuli(0);
 
 const double kMaxDef[] = {0.1, 0.05};
 const double kMaxForce[] = {1.0, 2.5};
@@ -160,6 +164,8 @@ bool next_trial{ true };
 std::int32_t trial_idx{ -1 };
 
 double tot_reward{ 0.0 };
+double reward{ 0.0 };
+double lost_reward{ 0.0 };
 
 std::ofstream output_file{"./data.csv"};
 
@@ -175,6 +181,9 @@ cGELSkeletonNode* nodes[kNumSurf][kNumNodeX][kNumNodeY][kNumNodeZ];
 // haptic device model
 cShapeSphere* device;
 double deviceRadius;
+
+// haptic device model
+cShapeSphere* device_start_pos;
 
 // radius of the dynamic model sphere (GEM)
 double radius;
@@ -403,6 +412,12 @@ int main(int argc, char* argv[])
     device->m_material->setWhite();
     device->m_material->setShininess(100);
 
+    device_start_pos = new cShapeSphere(deviceRadius);
+    world->addChild(device_start_pos);
+    device_start_pos->m_material->setGreenDark();
+    device_start_pos->m_material->setShininess(100);
+    device_start_pos->setLocalPos(0.0, 0.0, 0.5);
+
     //-----------------------------------------------------------------------
     // COMPOSE THE VIRTUAL SCENE
     //-----------------------------------------------------------------------
@@ -537,6 +552,10 @@ int main(int argc, char* argv[])
     // START SIMULATION
     //-----------------------------------------------------------------------
 
+    stimuli = LoadStimuli("./stimuli.csv");
+
+    output_file << "idx,surface,x,y,multimodal,time,force,reward,lost_reward,tot_reward,force_ol\n";
+
     // create a thread which starts the main haptics rendering loop
     hapticsThread = new cThread();
     hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
@@ -574,12 +593,24 @@ int main(int argc, char* argv[])
                 active_point_x      = stimuli[trial_idx][1];
                 active_point_y      = stimuli[trial_idx][2];
                 multimodal_feedback = stimuli[trial_idx][3];
+                
+                cMaterial mat;
+                mat.setWhite();
+                mat.setShininess(100);
 
-                for (std::int32_t i = 0; i < kNumSurf; ++i) defObject[i]->setEnabled(false, true);
+                for (std::int32_t i = 0; i < kNumSurf; ++i) {
+                    defObject[i]->setEnabled(false, true);
+                    defObject[i]->setMaterial(mat, true);
+                }
                 defObject[active_surface]->setEnabled(true, true);
             }
 
-            std::cout << "Trial IDX: " << trial_idx << "\n";
+            system("cls");
+            std::cout << "IDX: " << trial_idx << "\n";
+            std::cout << "Active Surface: " << active_surface << "\n";
+            std::cout << "Active Point X: " << active_point_x << "\n";
+            std::cout << "Active Point Y: " << active_point_y << "\n";
+            std::cout << "Multi-modal Feedback: " << multimodal_feedback << "\n";
 
             next_trial = false;
         }
@@ -602,19 +633,25 @@ int main(int argc, char* argv[])
 
 std::vector< std::vector<std::int32_t>> LoadStimuli(const std::string filename) {
     std::ifstream stimuli_file{ filename };
-    std::string data_line; // stimuli_file row
-    std::vector<std::string> data; // stimuli_file row elements as strings vector
+    std::string data_line;
+    std::string data;
     std::vector< std::vector<std::int32_t>> stimuli(0);
-    
-    //if (stimuli_file.is_open()) {
-    //    /* Discards stimuli file header */
-    //    std::getline(stimuli_file, data_line);
 
-    //    while (std::getline(stimuli_file, data_line)) {
+    if (stimuli_file.is_open()) {
+        /* Discard stimuli file header */
+        std::getline(stimuli_file, data_line);
+        /* for each row */
+        while (std::getline(stimuli_file, data_line)) {
+            std::stringstream data_line_stream(data_line);
+            /* for each row element */
+            std::vector<std::int32_t> stimulus(0);
+            while (std::getline(data_line_stream, data, ',')) {
+                stimulus.push_back(std::stoi(data));
+            }
+            stimuli.push_back(stimulus);
+        }
+    }
 
-    //    }
-    //}
-      
    return stimuli;
 }
 
@@ -752,12 +789,18 @@ void updateHaptics(void)
     cPrecisionClock clock;
     clock.reset();
 
+    cPrecisionClock exec_time;
+    exec_time.reset();
+
     std::uint32_t user_switches{ 0 };
     std::uint32_t old_user_switches{ 0 };
 
     // simulation in now running
     simulationRunning  = true;
     simulationFinished = false;
+
+    force_over_limit = false;
+    trial_started = false;
 
     // main haptic simulation loop
     while(simulationRunning) {   
@@ -772,6 +815,16 @@ void updateHaptics(void)
         hapticDevice->getPosition(pos);
         pos.mul(workspaceScaleFactor);
         device->setLocalPos(pos);
+        
+        if (!next_trial && !trial_started) {
+            if (pos.z() > device_start_pos->getLocalPos().z()) {
+                device_start_pos->setEnabled(false, true);
+                trial_started = true;
+                force_over_limit = false;
+                std::cout << "TRIAL STARTED\n";
+                exec_time.start(true);
+            }
+        }
 
         cVector3d vel;
         hapticDevice->getLinearVelocity(vel);
@@ -781,7 +834,7 @@ void updateHaptics(void)
 
         // compute reaction forces
         cVector3d force(0.0, 0.0, 0.0);
-
+ 
         if (next_trial) {
             // integrate dynamics
             defWorld->updateDynamics(time);
@@ -791,13 +844,14 @@ void updateHaptics(void)
             freqCounterHaptics.signal(1);
             continue;
         }
-        
+
         for (int z = 0; z < kNumNodeZ; z++) {
             for (int y = 0; y < kNumNodeY; y++) {
                 for (int x = 0; x < kNumNodeX; x++) {
                     cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
                     cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness[active_surface], vel);
                     cVector3d tmpfrc = -1.0 * f;
+                    if (force_over_limit || !trial_started || next_trial) tmpfrc.zero();
                     nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                 }
@@ -810,26 +864,55 @@ void updateHaptics(void)
         // scale force
         force.mul(deviceForceScale / workspaceScaleFactor);
         
-        if (force.length() > kMaxForce[active_surface]) {
-            //error message
-            std::cout << "ERROR: FORCE TOO HIGH!!!\n";
-        //    next_trial = true;
+        if (trial_started && !force_over_limit && force.length() > kMaxForce[active_surface]) {
+            cMaterial mat;
+            mat.setRedCrimson();
+            mat.setShininess(100);
+            defObject[active_surface]->setMaterial(mat, true);
+            force_over_limit = true;
+            std::cout << "FORCE OVER LIMIT\n";
         }
 
         hapticDevice->getUserSwitches(user_switches);
 
-        if (user_switches == 0 && old_user_switches != 0) {
-            tot_reward += pos.z();
+        if (!trial_started) old_user_switches = user_switches = 0;
+        else old_user_switches = user_switches;
+        
+        std::cout << old_user_switches << "," << user_switches << "\r";
 
-            std::cout << "Total Reward: " << tot_reward << "\r";
+//        if (trial_started && user_switches == 0 && old_user_switches != 0) {
+        if (trial_started && user_switches == 2) {
+            //
+            if (!force_over_limit) {
+                reward = fabs(pos.z());
+                lost_reward = 0.0;
+                tot_reward += reward;
+            }
+            else {
+                reward = 0;
+                lost_reward = fabs(pos.z());
+            }
+            
+            output_file << trial_idx << ","
+                        << active_surface << ","
+                        << active_point_x << ","
+                        << active_point_y << ","
+                        << multimodal_feedback << ","
+                        << exec_time.stop() << ","
+                        << force.length() << ","
+                        << reward << ","
+                        << lost_reward << ","
+                        << tot_reward << ","
+                        << force_over_limit << "\n";
 
-            // wait ISI
+            if (force_over_limit) std::cout << "Lost Reward: " << reward << "\n";
+            else std::cout << "Total Reward: " << tot_reward << "\n";
+            device_start_pos->setEnabled(true, true);
+            trial_started = false;
             next_trial = true;
         }
 
-        old_user_switches = user_switches;
-
-        if (multimodal_feedback == 0) force.zero();
+        if (multimodal_feedback == 0 || force_over_limit || !trial_started) force.zero();
 
         // send forces to haptic device
         hapticDevice->setForce(force);
