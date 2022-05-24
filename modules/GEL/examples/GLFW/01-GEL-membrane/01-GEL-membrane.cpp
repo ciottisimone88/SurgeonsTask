@@ -46,6 +46,12 @@
 #include "GEL3D.h"
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
+
+#include <fstream>
+#include <string>
+
+#include <boost/algorithm/string.hpp>
+
 //------------------------------------------------------------------------------
 using namespace chai3d;
 using namespace std;
@@ -136,25 +142,24 @@ string resourceRoot;
 // GEL
 //---------------------------------------------------------------------------
 
+// Define some constants
+const std::int32_t kNumSurf{ 2 };
+const std::int32_t kNumNodeX{ 10 };
+const std::int32_t kNumNodeY{ 10 };
+const std::int32_t kNumNodeZ{ 1 };
+
+std::int32_t active_surface{ -1 };// -1 -> INVALID
+
+std::ofstream output_file{"./data.csv"};
+
 // deformable world
 cGELWorld* defWorld;
 
 // object mesh
-cGELMesh* defObject_l;
-cGELMesh* defObject_c;
-cGELMesh* defObject_r;
-
-// Define some constants
-std::int32_t kNumNodeX{ 10 };
-std::int32_t kNumNodeY{ 10 };
-std::int32_t kNumNodeZ{ 1 };
-
-double kDefObjOffset{ 1.2 };
+cGELMesh* defObject[kNumSurf];
 
 // dynamic nodes
-cGELSkeletonNode* nodes_l[10][10][1];
-cGELSkeletonNode* nodes_c[10][10][1];
-cGELSkeletonNode* nodes_r[10][10][1];
+cGELSkeletonNode* nodes[kNumSurf][kNumNodeX][kNumNodeY][kNumNodeZ];
 
 // haptic device model
 cShapeSphere* device;
@@ -164,14 +169,13 @@ double deviceRadius;
 double radius;
 
 // stiffness properties between the haptic device tool and the model (GEM)
-double stiffness_l;
-double stiffness_c;
-double stiffness_r;
-
+double stiffness[] = {50,150};
 
 //---------------------------------------------------------------------------
 // DECLARED FUNCTIONS
 //---------------------------------------------------------------------------
+
+std::vector< std::vector<std::int32_t>> LoadStimuli(const std::string filename = "./stimuli.csv");
 
 // callback when the window display is resized
 void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height);
@@ -246,8 +250,7 @@ int main(int argc, char* argv[])
     //-----------------------------------------------------------------------
 
     // initialize GLFW library
-    if (!glfwInit())
-    {
+    if (!glfwInit()) {
         cout << "failed initialization" << endl;
         cSleepMs(1000);
         return 1;
@@ -268,19 +271,15 @@ int main(int argc, char* argv[])
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
 
     // set active stereo mode
-    if (stereoMode == C_STEREO_ACTIVE)
-    {
+    if (stereoMode == C_STEREO_ACTIVE) {
         glfwWindowHint(GLFW_STEREO, GL_TRUE);
-    }
-    else
-    {
+    } else {
         glfwWindowHint(GLFW_STEREO, GL_FALSE);
     }
 
     // create display context
     window = glfwCreateWindow(w, h, "CHAI3D", NULL, NULL);
-    if (!window)
-    {
+    if (!window) {
         cout << "failed to create window" << endl;
         cSleepMs(1000);
         glfwTerminate();
@@ -307,14 +306,12 @@ int main(int argc, char* argv[])
 
     // initialize GLEW library
 #ifdef GLEW_VERSION
-    if (glewInit() != GLEW_OK)
-    {
+    if (glewInit() != GLEW_OK) {
         cout << "failed to initialize GLEW library" << endl;
         glfwTerminate();
         return 1;
     }
 #endif
-
 
     //-----------------------------------------------------------------------
     // 3D - SCENEGRAPH
@@ -378,7 +375,7 @@ int main(int argc, char* argv[])
     hapticDevice->open();
 
     // desired workspace radius of the cursor
-    cursorWorkspaceRadius = 0.7;
+    cursorWorkspaceRadius = 1.0;//0.7
 
     // read the scale factor between the physical workspace of the haptic
     // device and the virtual workspace defined for the tool
@@ -395,11 +392,6 @@ int main(int argc, char* argv[])
     device->m_material->setWhite();
     device->m_material->setShininess(100);
 
-    // interaction stiffness between tool and deformable model 
-    stiffness_l = 25;
-    stiffness_c = 75;
-    stiffness_r = 125;
-    
     //-----------------------------------------------------------------------
     // COMPOSE THE VIRTUAL SCENE
     //-----------------------------------------------------------------------
@@ -408,210 +400,103 @@ int main(int argc, char* argv[])
     defWorld = new cGELWorld();
     world->addChild(defWorld);
 
-    // create a deformable mesh
-    defObject_l = new cGELMesh();
-    defWorld->m_gelMeshes.push_front(defObject_l);
-    defObject_c = new cGELMesh();
-    defWorld->m_gelMeshes.push_front(defObject_c);
-    defObject_r = new cGELMesh();
-    defWorld->m_gelMeshes.push_front(defObject_r);
-
-    // set object position
-    defObject_l->setLocalPos(0.0, -kDefObjOffset, 0.0);
-    defObject_c->setLocalPos(0.0, 0.0, 0.0);
-    defObject_r->setLocalPos(0.0, kDefObjOffset, 0.0);
-
-
-    // load model
-    bool fileload;
-    fileload = defObject_l->loadFromFile(RESOURCE_PATH("../resources/models/box/box.obj"));
-    if (!fileload) {
-        cout << "Error - 3D Model failed to load correctly." << endl;
-        close();
-        return (-1);
-    }
-    fileload = defObject_c->loadFromFile(RESOURCE_PATH("../resources/models/box/box.obj"));
-    if (!fileload) {
-        cout << "Error - 3D Model failed to load correctly." << endl;
-        close();
-        return (-1);
-    }
-    fileload = defObject_r->loadFromFile(RESOURCE_PATH("../resources/models/box/box.obj"));
-    if (!fileload) {
-        cout << "Error - 3D Model failed to load correctly." << endl;
-        close();
-        return (-1);
-    }
-
-    // set some material color on the object
-    cMaterial mat;
-    mat.setWhite();
-    mat.setShininess(100);
-    defObject_l->setMaterial(mat, true);
-    defObject_c->setMaterial(mat, true);
-    defObject_r->setMaterial(mat, true);
-
-    // let's create a some environment mapping
-    shared_ptr<cTexture2d> texture_l(new cTexture2d());
-    fileload = texture_l->loadFromFile(RESOURCE_PATH("../resources/images/bio.jpg"));
-    if (!fileload) {
-         cout << "Error - Texture failed to load correctly." << endl;
-        close();
-        return (-1);
-    }
-    shared_ptr<cTexture2d> texture_c(new cTexture2d());
-    fileload = texture_c->loadFromFile(RESOURCE_PATH("../resources/images/shadow.jpg"));
-    if (!fileload) {
-        cout << "Error - Texture failed to load correctly." << endl;
-        close();
-        return (-1);
-    }
-    shared_ptr<cTexture2d> texture_r(new cTexture2d());
-    fileload = texture_r->loadFromFile(RESOURCE_PATH("../resources/images/stone.jpg"));
-    if (!fileload) {
-        cout << "Error - Texture failed to load correctly." << endl;
-        close();
-        return (-1);
-    }
-
-    // enable environmental texturing
-    texture_l->setEnvironmentMode(GL_DECAL);
-    texture_l->setSphericalMappingEnabled(true);
-    // enable environmental texturing
-    texture_c->setEnvironmentMode(GL_DECAL);
-    texture_c->setSphericalMappingEnabled(true);
-    // enable environmental texturing
-    texture_r->setEnvironmentMode(GL_DECAL);
-    texture_r->setSphericalMappingEnabled(true);
-
-    // assign and enable texturing
-    defObject_l->setTexture(texture_l, true);
-    defObject_l->setUseTexture(true, true);
-    //
-    defObject_c->setTexture(texture_c, true);
-    defObject_c->setUseTexture(true, true);
-    //
-    defObject_r->setTexture(texture_r, true);
-    defObject_r->setUseTexture(true, true);
-
-    // set object to be transparent
-    defObject_l->setTransparencyLevel(0.65, true, true);
-    defObject_c->setTransparencyLevel(0.65, true, true);
-    defObject_r->setTransparencyLevel(0.65, true, true);
-    
-    // build dynamic vertices
-    defObject_l->buildVertices();
-    defObject_c->buildVertices();
-    defObject_r->buildVertices();
-
     // set default properties for skeleton nodes
-    cGELSkeletonNode::s_default_radius        = 0.05;  // [m]
-    cGELSkeletonNode::s_default_kDampingPos   = 2.5;
-    cGELSkeletonNode::s_default_kDampingRot   = 0.6;
-    cGELSkeletonNode::s_default_mass          = 0.002; // [kg]
-    cGELSkeletonNode::s_default_showFrame     = true;
+    cGELSkeletonNode::s_default_radius = 0.05;  // [m]
+    cGELSkeletonNode::s_default_kDampingPos = 2.5;
+    cGELSkeletonNode::s_default_kDampingRot = 0.6;
+    cGELSkeletonNode::s_default_mass = 0.002; // [kg]
+    cGELSkeletonNode::s_default_showFrame = true;
     cGELSkeletonNode::s_default_color.setBlueCornflower();
-    cGELSkeletonNode::s_default_useGravity    = true;
-    //cGELSkeletonNode::s_default_gravity.set(0.00, 0.00,-9.81);
+    cGELSkeletonNode::s_default_useGravity = false;
     cGELSkeletonNode::s_default_gravity.set(0.00, 0.00, 0.00);
     radius = cGELSkeletonNode::s_default_radius;
 
-    // use internal skeleton as deformable model
-    defObject_l->m_useSkeletonModel = true;
-    defObject_c->m_useSkeletonModel = true;
-    defObject_r->m_useSkeletonModel = true;
+    // set default physical properties for links
+    cGELSkeletonLink::s_default_kSpringElongation = 25.0;  // [N/m]
+    cGELSkeletonLink::s_default_kSpringFlexion = 0.5;   // [Nm/RAD]
+    cGELSkeletonLink::s_default_kSpringTorsion = 0.1;   // [Nm/RAD]
+    cGELSkeletonLink::s_default_color.setBlueCornflower();
 
-    // create an array of nodes
-    for (int z = 0; z < kNumNodeZ; z++) {
-        for (int y = 0; y < kNumNodeY; y++) {
-            for (int x = 0; x < kNumNodeX; x++) {
-                cGELSkeletonNode* newNode_l = new cGELSkeletonNode();
-                nodes_l[x][y][z] = newNode_l;
-                defObject_l->m_nodes.push_front(newNode_l);
-                newNode_l->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
-                newNode_l->m_kDampingPos = 0.1 * 0.25 * 25.0;
-                //newNode_l->m_kDampingPos = 0.25 * cGELSkeletonNode::s_default_kDampingPos;;
-                //
-                cGELSkeletonNode* newNode_c = new cGELSkeletonNode();
-                nodes_c[x][y][z] = newNode_c;
-                defObject_c->m_nodes.push_front(newNode_c);
-                newNode_c->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
-                newNode_c->m_kDampingPos = 0.1 * 0.25 * 75.0;
-                //
-                cGELSkeletonNode* newNode_r = new cGELSkeletonNode();
-                nodes_r[x][y][z] = newNode_r;
-                defObject_r->m_nodes.push_front(newNode_r);
-                newNode_r->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
-                //newNode_r->m_kDampingPos = 4.0 * cGELSkeletonNode::s_default_kDampingPos;
-                newNode_r->m_kDampingPos = 0.1 * 0.25 * 125.0;
+    // create a deformable mesh
+    for (std::int32_t i = 0; i < kNumSurf; ++i) {
+        defObject[i] = new cGELMesh();
+        defWorld->m_gelMeshes.push_front(defObject[i]);
+        defObject[i]->setLocalPos(0.0, 0.0, 0.0);
+        defObject[i]->setEnabled(false, true);//affect children
 
-                // set corner nodes as fixed
-                if ((x == 0 && y == 9) || (x == 9 && y == 0) || (x == 9 && y == 9) || (x == 0 && y == 0)) {
-                    newNode_l->m_fixed = true;
-                    newNode_c->m_fixed = true;
-                    newNode_r->m_fixed = true;
+        // load model
+        bool fileload;
+        fileload = defObject[i]->loadFromFile(RESOURCE_PATH("../resources/models/box/box.obj"));
+        if (!fileload) {
+            cout << "Error - 3D Model failed to load correctly." << endl;
+            close();
+            return (-1);
+        }
+
+        // set some material color on the object
+        cMaterial mat;
+        mat.setWhite();
+        mat.setShininess(100);
+        defObject[i]->setMaterial(mat, true);
+
+        // let's create a some environment mapping
+        shared_ptr<cTexture2d> texture(new cTexture2d());
+        if (i == 0) fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/bio.jpg"));
+        else        fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/stone.jpg"));
+
+        if (!fileload) {
+            cout << "Error - Texture failed to load correctly." << endl;
+            close();
+            return (-1);
+        }
+
+        // enable environmental texturing
+        texture->setEnvironmentMode(GL_DECAL);
+        texture->setSphericalMappingEnabled(true);
+
+        defObject[i]->setTexture(texture, true);
+        defObject[i]->setUseTexture(true, true);
+        // set object to be transparent
+        defObject[i]->setTransparencyLevel(0.65, true, true);
+        // build dynamic vertices
+        defObject[i]->buildVertices();
+        // use internal skeleton as deformable model
+        defObject[i]->m_useSkeletonModel = true;
+
+        // create an array of nodes
+        for (int z = 0; z < kNumNodeZ; z++) {
+            for (int y = 0; y < kNumNodeY; y++) {
+                for (int x = 0; x < kNumNodeX; x++) {
+                    cGELSkeletonNode* newNode = new cGELSkeletonNode();
+                    nodes[i][x][y][z] = newNode;
+                    defObject[i]->m_nodes.push_front(newNode);
+                    newNode->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
+                    newNode->m_kDampingPos = 0.1 * 0.25 * stiffness[i];
+                    // set corner nodes as fixed
+                    if ((x == 0 && y == 9) || (x == 9 && y == 0) || (x == 9 && y == 9) || (x == 0 && y == 0)) newNode->m_fixed = true;
                 }
             }
         }
-    }
-
-    // set default physical properties for links
-    cGELSkeletonLink::s_default_kSpringElongation = 25.0;  // [N/m]
-    cGELSkeletonLink::s_default_kSpringFlexion    = 0.5;   // [Nm/RAD]
-    cGELSkeletonLink::s_default_kSpringTorsion    = 0.1;   // [Nm/RAD]
-    cGELSkeletonLink::s_default_color.setBlueCornflower();
-
-    // create links between nodes
-    for (int z = 0; z < kNumNodeZ; z++) {
-        for (int y = 0; y < kNumNodeY - 1; y++) {
-            for (int x = 0; x < kNumNodeX - 1; x++) {
-                //cGELSkeletonLink::s_default_kSpringElongation = 0.5 * 25.0;
-                cGELSkeletonLink::s_default_kSpringElongation = 0.25 * 25.0;
-                cGELSkeletonLink* newLinkX0_l = new cGELSkeletonLink(nodes_l[x + 0][y + 0][z], nodes_l[x + 1][y + 0][z]);
-                cGELSkeletonLink* newLinkX1_l = new cGELSkeletonLink(nodes_l[x + 0][y + 1][z], nodes_l[x + 1][y + 1][z]);
-                cGELSkeletonLink* newLinkY0_l = new cGELSkeletonLink(nodes_l[x + 0][y + 0][z], nodes_l[x + 0][y + 1][z]);
-                cGELSkeletonLink* newLinkY1_l = new cGELSkeletonLink(nodes_l[x + 1][y + 0][z], nodes_l[x + 1][y + 1][z]);
-                defObject_l->m_links.push_front(newLinkX0_l);
-                defObject_l->m_links.push_front(newLinkX1_l);
-                defObject_l->m_links.push_front(newLinkY0_l);
-                defObject_l->m_links.push_front(newLinkY1_l);
-                //
-                //cGELSkeletonLink::s_default_kSpringElongation = 25.0;
-                cGELSkeletonLink::s_default_kSpringElongation = 0.25 * 75.0;
-                cGELSkeletonLink* newLinkX0_c = new cGELSkeletonLink(nodes_c[x + 0][y + 0][z], nodes_c[x + 1][y + 0][z]);
-                cGELSkeletonLink* newLinkX1_c = new cGELSkeletonLink(nodes_c[x + 0][y + 1][z], nodes_c[x + 1][y + 1][z]);
-                cGELSkeletonLink* newLinkY0_c = new cGELSkeletonLink(nodes_c[x + 0][y + 0][z], nodes_c[x + 0][y + 1][z]);
-                cGELSkeletonLink* newLinkY1_c = new cGELSkeletonLink(nodes_c[x + 1][y + 0][z], nodes_c[x + 1][y + 1][z]);
-                defObject_c->m_links.push_front(newLinkX0_c);
-                defObject_c->m_links.push_front(newLinkX1_c);
-                defObject_c->m_links.push_front(newLinkY0_c);
-                defObject_c->m_links.push_front(newLinkY1_c);
-                //
-                //cGELSkeletonLink::s_default_kSpringElongation = 4.0 * 25.0;
-                cGELSkeletonLink::s_default_kSpringElongation = 0.25 * 125.0;
-                cGELSkeletonLink* newLinkX0_r = new cGELSkeletonLink(nodes_r[x + 0][y + 0][z], nodes_r[x + 1][y + 0][z]);
-                cGELSkeletonLink* newLinkX1_r = new cGELSkeletonLink(nodes_r[x + 0][y + 1][z], nodes_r[x + 1][y + 1][z]);
-                cGELSkeletonLink* newLinkY0_r = new cGELSkeletonLink(nodes_r[x + 0][y + 0][z], nodes_r[x + 0][y + 1][z]);
-                cGELSkeletonLink* newLinkY1_r = new cGELSkeletonLink(nodes_r[x + 1][y + 0][z], nodes_r[x + 1][y + 1][z]);
-                defObject_r->m_links.push_front(newLinkX0_r);
-                defObject_r->m_links.push_front(newLinkX1_r);
-                defObject_r->m_links.push_front(newLinkY0_r);
-                defObject_r->m_links.push_front(newLinkY1_r);
+        // create links between nodes
+        for (int z = 0; z < kNumNodeZ; z++) {
+            for (int y = 0; y < kNumNodeY; y++) {
+                for (int x = 0; x < kNumNodeX; x++) {
+                    cGELSkeletonLink::s_default_kSpringElongation = 0.25 * stiffness[i];
+                    cGELSkeletonLink* newLinkX0 = new cGELSkeletonLink(nodes[i][x + 0][y + 0][z], nodes[i][x + 1][y + 0][z]);
+                    cGELSkeletonLink* newLinkX1 = new cGELSkeletonLink(nodes[i][x + 0][y + 1][z], nodes[i][x + 1][y + 1][z]);
+                    cGELSkeletonLink* newLinkY0 = new cGELSkeletonLink(nodes[i][x + 0][y + 0][z], nodes[i][x + 0][y + 1][z]);
+                    cGELSkeletonLink* newLinkY1 = new cGELSkeletonLink(nodes[i][x + 1][y + 0][z], nodes[i][x + 1][y + 1][z]);
+                    defObject[i]->m_links.push_front(newLinkX0);
+                    defObject[i]->m_links.push_front(newLinkX1);
+                    defObject[i]->m_links.push_front(newLinkY0);
+                    defObject[i]->m_links.push_front(newLinkY1);
+                }
             }
-
         }
+        //
+        defObject[i]->connectVerticesToSkeleton(false);
+        defObject[i]->m_showSkeletonModel = false;
     }
-
-    // connect skin (mesh) to skeleton (GEM)
-    defObject_l->connectVerticesToSkeleton(false);
-    defObject_c->connectVerticesToSkeleton(false);
-    defObject_r->connectVerticesToSkeleton(false);
-
-    // show/hide underlying dynamic skeleton model
-    defObject_l->m_showSkeletonModel = false;
-    defObject_c->m_showSkeletonModel = false;
-    defObject_r->m_showSkeletonModel = false;
-
 
     //--------------------------------------------------------------------------
     // WIDGETS
@@ -646,7 +531,6 @@ int main(int argc, char* argv[])
 
     // setup callback when application exits
     atexit(close);
-
 
     //--------------------------------------------------------------------------
     // MAIN GRAPHIC LOOP
@@ -686,8 +570,25 @@ int main(int argc, char* argv[])
 
 //---------------------------------------------------------------------------
 
-void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height)
-{
+std::vector< std::vector<std::int32_t>> LoadStimuli(const std::string filename) {
+    std::ifstream stimuli_file{ filename };
+    std::string data_line; // stimuli_file row
+    std::vector<std::string> data; // stimuli_file row elements as strings vector
+    std::vector< std::vector<std::int32_t>> stimuli(0);
+
+    if (stimuli_file.is_open()) {
+        /* Discards stimuli file header */
+        std::getline(stimuli_file, data_line);
+
+        while (std::getline(stimuli_file, data_line)) {
+
+        }
+    }
+        
+   return stimuli;
+}
+
+void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height) {
     // update window size
     width  = a_width;
     height = a_height;
@@ -695,33 +596,21 @@ void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height)
 
 //------------------------------------------------------------------------------
 
-void errorCallback(int a_error, const char* a_description)
-{
+void errorCallback(int a_error, const char* a_description) {
     cout << "Error: " << a_description << endl;
 }
 
 //---------------------------------------------------------------------------
 
-void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, int a_mods)
-{
+void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, int a_mods) {
     // filter calls that only include a key press
-    if ((a_action != GLFW_PRESS) && (a_action != GLFW_REPEAT))
-    {
+    if ((a_action != GLFW_PRESS) && (a_action != GLFW_REPEAT)) {
         return;
-    }
-
-    // option - exit
-    else if ((a_key == GLFW_KEY_ESCAPE) || (a_key == GLFW_KEY_Q))
-    {
+    } else if ((a_key == GLFW_KEY_ESCAPE) || (a_key == GLFW_KEY_Q)) {// option - exit
         glfwSetWindowShouldClose(a_window, GLFW_TRUE);
-    }
-
-    // option - show/hide skeleton
-    else if (a_key == GLFW_KEY_S)
-    {
-        defObject_l->m_showSkeletonModel = !defObject_l->m_showSkeletonModel;
-        defObject_c->m_showSkeletonModel = !defObject_c->m_showSkeletonModel;
-        defObject_r->m_showSkeletonModel = !defObject_r->m_showSkeletonModel;
+    } else if (a_key == GLFW_KEY_S) {// option - show/hide skeleton
+        if (active_surface >= 0 && active_surface < kNumSurf)
+            defObject[active_surface]->m_showSkeletonModel = !defObject[active_surface]->m_showSkeletonModel;
     }
 
     // option - toggle fullscreen
@@ -759,6 +648,8 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
         mirroredDisplay = !mirroredDisplay;
         camera->setMirrorVertical(mirroredDisplay);
     }
+
+    else if (a_key == GLFW_KEY_G)
 }
 
 //---------------------------------------------------------------------------
