@@ -50,8 +50,6 @@
 #include <fstream>
 #include <string>
 
-#include <boost/algorithm/string.hpp>
-
 //------------------------------------------------------------------------------
 using namespace chai3d;
 using namespace std;
@@ -575,16 +573,16 @@ std::vector< std::vector<std::int32_t>> LoadStimuli(const std::string filename) 
     std::string data_line; // stimuli_file row
     std::vector<std::string> data; // stimuli_file row elements as strings vector
     std::vector< std::vector<std::int32_t>> stimuli(0);
+    
+    //if (stimuli_file.is_open()) {
+    //    /* Discards stimuli file header */
+    //    std::getline(stimuli_file, data_line);
 
-    if (stimuli_file.is_open()) {
-        /* Discards stimuli file header */
-        std::getline(stimuli_file, data_line);
+    //    while (std::getline(stimuli_file, data_line)) {
 
-        while (std::getline(stimuli_file, data_line)) {
-
-        }
-    }
-        
+    //    }
+    //}
+      
    return stimuli;
 }
 
@@ -609,7 +607,7 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
     } else if ((a_key == GLFW_KEY_ESCAPE) || (a_key == GLFW_KEY_Q)) {// option - exit
         glfwSetWindowShouldClose(a_window, GLFW_TRUE);
     } else if (a_key == GLFW_KEY_S) {// option - show/hide skeleton
-        if (active_surface >= 0 && active_surface < kNumSurf)
+        if (active_surface != -1)
             defObject[active_surface]->m_showSkeletonModel = !defObject[active_surface]->m_showSkeletonModel;
     }
 
@@ -649,7 +647,12 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
         camera->setMirrorVertical(mirroredDisplay);
     }
 
-    else if (a_key == GLFW_KEY_G)
+    else if (a_key == GLFW_KEY_G) {
+        active_surface++;
+        for (std::int32_t i = 0; i < kNumSurf; ++i) defObject[i]->setEnabled(false, true);
+        if (active_surface >= kNumSurf) active_surface = -1;
+        if (active_surface != -1) defObject[active_surface]->setEnabled(true, true);
+    }
 }
 
 //---------------------------------------------------------------------------
@@ -664,6 +667,8 @@ void close(void)
 
     // close haptic device
     hapticDevice->close();
+
+    output_file.close();
 
     // delete resources
     delete hapticsThread;
@@ -749,30 +754,17 @@ void updateHaptics(void)
 
         // compute reaction forces
         cVector3d force(0.0, 0.0, 0.0);
-        for (int z = 0; z < kNumNodeZ; z++) {
-            for (int y = 0; y < kNumNodeY; y++) {
-                for (int x = 0; x < kNumNodeX; x++) {
-                    //cVector3d nodePos = nodes_l[x][y][z]->m_pos;
-                    cVector3d nodePos = nodes_l[x][y][z]->m_pos + cVector3d(0.0, -kDefObjOffset, 0.0);
-                    cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_l, vel);
-                    cVector3d tmpfrc = -2.5 * f;
-                    //cVector3d tmpfrc = -1.0 * f;
-                    nodes_l[x][y][z]->setExternalForce(tmpfrc);
-                    force.add(f);
-                    //
-                    nodePos = nodes_c[x][y][z]->m_pos;
-                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_c, vel);
-                    tmpfrc = -1.0 * f;
-                    nodes_c[x][y][z]->setExternalForce(tmpfrc);
-                    force.add(f);
-                    //
-                    //nodePos = nodes_r[x][y][z]->m_pos;
-                    nodePos = nodes_r[x][y][z]->m_pos + cVector3d(0.0, kDefObjOffset, 0.0);
-                    f = computeForce(pos, deviceRadius, nodePos, radius, stiffness_r, vel);
-                    tmpfrc = -0.25 * f;
-                    //tmpfrc = -1.0 * f;
-                    nodes_r[x][y][z]->setExternalForce(tmpfrc);
-                    force.add(f);
+        
+        if (active_surface != -1) {
+            for (int z = 0; z < kNumNodeZ; z++) {
+                for (int y = 0; y < kNumNodeY; y++) {
+                    for (int x = 0; x < kNumNodeX; x++) {
+                        cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
+                        cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness[active_surface], vel);
+                        cVector3d tmpfrc = -1.0 * f;
+                        nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
+                        force.add(f);
+                    }
                 }
             }
         }
