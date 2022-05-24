@@ -146,7 +146,20 @@ const std::int32_t kNumNodeX{ 10 };
 const std::int32_t kNumNodeY{ 10 };
 const std::int32_t kNumNodeZ{ 1 };
 
+std::int32_t active_point_x{ -1 };
+std::int32_t active_point_y{ -1 };
 std::int32_t active_surface{ -1 };// -1 -> INVALID
+std::int32_t multimodal_feedback{ 0 };
+
+std::vector<std::vector<std::int32_t>> stimuli = { {1,1,1,0}, {1,2,0,1}, {2,0,1,1}, {2,1,2,0} };
+
+const double kMaxDef[] = {0.1, 0.05};
+const double kMaxForce[] = {1.0, 2.5};
+
+bool next_trial{ true };
+std::int32_t trial_idx{ -1 };
+
+double tot_reward{ 0.0 };
 
 std::ofstream output_file{"./data.csv"};
 
@@ -553,6 +566,24 @@ int main(int argc, char* argv[])
         // process events
         glfwPollEvents();
 
+        if (next_trial) {
+            trial_idx++;
+            if (trial_idx >= stimuli.size()) glfwSetWindowShouldClose(window, GLFW_TRUE);
+            else {
+                active_surface      = stimuli[trial_idx][0]-1;
+                active_point_x      = stimuli[trial_idx][1];
+                active_point_y      = stimuli[trial_idx][2];
+                multimodal_feedback = stimuli[trial_idx][3];
+
+                for (std::int32_t i = 0; i < kNumSurf; ++i) defObject[i]->setEnabled(false, true);
+                defObject[active_surface]->setEnabled(true, true);
+            }
+
+            std::cout << "Trial IDX: " << trial_idx << "\n";
+
+            next_trial = false;
+        }
+
         // signal frequency counter
         freqCounterGraphics.signal(1);
     }
@@ -647,13 +678,6 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
         mirroredDisplay = !mirroredDisplay;
         camera->setMirrorVertical(mirroredDisplay);
     }
-
-    else if (a_key == GLFW_KEY_G) {
-        active_surface++;
-        for (std::int32_t i = 0; i < kNumSurf; ++i) defObject[i]->setEnabled(false, true);
-        if (active_surface >= kNumSurf) active_surface = -1;
-        if (active_surface != -1) defObject[active_surface]->setEnabled(true, true);
-    }
 }
 
 //---------------------------------------------------------------------------
@@ -728,13 +752,15 @@ void updateHaptics(void)
     cPrecisionClock clock;
     clock.reset();
 
+    std::uint32_t user_switches{ 0 };
+    std::uint32_t old_user_switches{ 0 };
+
     // simulation in now running
     simulationRunning  = true;
     simulationFinished = false;
 
     // main haptic simulation loop
-    while(simulationRunning)
-    {
+    while(simulationRunning) {   
         // stop clock
         double time = cMin(0.001, clock.stop());
 
@@ -755,17 +781,25 @@ void updateHaptics(void)
 
         // compute reaction forces
         cVector3d force(0.0, 0.0, 0.0);
+
+        if (next_trial) {
+            // integrate dynamics
+            defWorld->updateDynamics(time);
+            // send forces to haptic device
+            hapticDevice->setForce(force);
+            // signal frequency counter
+            freqCounterHaptics.signal(1);
+            continue;
+        }
         
-        if (active_surface != -1) {
-            for (int z = 0; z < kNumNodeZ; z++) {
-                for (int y = 0; y < kNumNodeY; y++) {
-                    for (int x = 0; x < kNumNodeX; x++) {
-                        cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
-                        cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness[active_surface], vel);
-                        cVector3d tmpfrc = -1.0 * f;
-                        nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
-                        force.add(f);
-                    }
+        for (int z = 0; z < kNumNodeZ; z++) {
+            for (int y = 0; y < kNumNodeY; y++) {
+                for (int x = 0; x < kNumNodeX; x++) {
+                    cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
+                    cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness[active_surface], vel);
+                    cVector3d tmpfrc = -1.0 * f;
+                    nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
+                    force.add(f);
                 }
             }
         }
@@ -775,14 +809,30 @@ void updateHaptics(void)
 
         // scale force
         force.mul(deviceForceScale / workspaceScaleFactor);
+        
+        if (force.length() > kMaxForce[active_surface]) {
+            //error message
+            std::cout << "ERROR: FORCE TOO HIGH!!!\n";
+        //    next_trial = true;
+        }
 
-        //force += cVector3d(0.0, 0.0, 0.981);
+        hapticDevice->getUserSwitches(user_switches);
 
-        // DEBUG INFO
-        std::cout << std::fabs(pos.z()) << "," << force.length() << "\r";
+        if (user_switches == 0 && old_user_switches != 0) {
+            tot_reward += pos.z();
+
+            std::cout << "Total Reward: " << tot_reward << "\r";
+
+            // wait ISI
+            next_trial = true;
+        }
+
+        old_user_switches = user_switches;
+
+        if (multimodal_feedback == 0) force.zero();
 
         // send forces to haptic device
-       hapticDevice->setForce(force);
+        hapticDevice->setForce(force);
 
         // signal frequency counter
         freqCounterHaptics.signal(1);
