@@ -414,7 +414,7 @@ int main(int argc, char* argv[])
     cGELSkeletonLink::s_default_kSpringFlexion = 0.5;   // [Nm/RAD]
     cGELSkeletonLink::s_default_kSpringTorsion = 0.1;   // [Nm/RAD]
     cGELSkeletonLink::s_default_color.setBlueCornflower();
-
+    
     // create a deformable mesh
     for (std::int32_t i = 0; i < kNumSurf; ++i) {
         defObject[i] = new cGELMesh();
@@ -475,10 +475,11 @@ int main(int argc, char* argv[])
                 }
             }
         }
+           
         // create links between nodes
         for (int z = 0; z < kNumNodeZ; z++) {
-            for (int y = 0; y < kNumNodeY; y++) {
-                for (int x = 0; x < kNumNodeX; x++) {
+            for (int y = 0; y < kNumNodeY-1; y++) {
+                for (int x = 0; x < kNumNodeX-1; x++) {
                     cGELSkeletonLink::s_default_kSpringElongation = 0.25 * stiffness[i];
                     cGELSkeletonLink* newLinkX0 = new cGELSkeletonLink(nodes[i][x + 0][y + 0][z], nodes[i][x + 1][y + 0][z]);
                     cGELSkeletonLink* newLinkX1 = new cGELSkeletonLink(nodes[i][x + 0][y + 1][z], nodes[i][x + 1][y + 1][z]);
