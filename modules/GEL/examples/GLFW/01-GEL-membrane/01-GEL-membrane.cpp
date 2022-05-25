@@ -45,6 +45,9 @@
 #include "chai3d.h"
 #include "GEL3D.h"
 //------------------------------------------------------------------------------
+
+#include "json.hpp"
+
 #include <GLFW/glfw3.h>
 
 #include <fstream>
@@ -157,8 +160,14 @@ std::int32_t multimodal_feedback{ 0 };
 
 std::vector<std::vector<std::int32_t>> stimuli(0);
 
-const double kMaxDef[] = {0.1, 0.05};
-const double kMaxForce[] = {1.0, 2.5};
+nlohmann::json config_file_json;
+std::ifstream config_file("./config.json");
+std::ofstream output_file;
+std::vector<double> max_force;
+double max_time;
+std::int32_t trial_limit;
+// stiffness properties between the haptic device tool and the model (GEM)
+std::vector<double> stiffness;
 
 bool next_trial{ true };
 std::int32_t trial_idx{ -1 };
@@ -166,8 +175,6 @@ std::int32_t trial_idx{ -1 };
 double tot_reward{ 0.0 };
 double reward{ 0.0 };
 double lost_reward{ 0.0 };
-
-std::ofstream output_file{"./data.csv"};
 
 // deformable world
 cGELWorld* defWorld;
@@ -188,8 +195,7 @@ cShapeSphere* device_start_pos;
 // radius of the dynamic model sphere (GEM)
 double radius;
 
-// stiffness properties between the haptic device tool and the model (GEM)
-double stiffness[] = {50,150};
+cMultiMesh* scalpel;
 
 //---------------------------------------------------------------------------
 // DECLARED FUNCTIONS
@@ -264,6 +270,18 @@ int main(int argc, char* argv[])
     // parse first arg to try and locate resources
     resourceRoot = string(argv[0]).substr(0,string(argv[0]).find_last_of("/\\")+1);
 
+    stimuli = LoadStimuli("./stimuli.csv");
+
+    config_file >> config_file_json;
+    config_file.close();
+
+    output_file.open(config_file_json["name"].get<std::string>() + "_data.csv");
+    max_force = config_file_json["force_limit"].get<std::vector<double>>();
+    max_time = config_file_json["max_time"].get<double>();
+    trial_limit = config_file_json["trial_limit"].get<std::int32_t>();
+    stiffness = config_file_json["stiffness"].get<std::vector<double>>();
+
+    output_file << "idx,surface,x,y,multimodal,time,force,reward,lost_reward,tot_reward,force_ol\n";
 
     //-----------------------------------------------------------------------
     // OPEN GL - WINDOW DISPLAY
@@ -377,6 +395,13 @@ int main(int argc, char* argv[])
     // define direction of light beam
     light->setDir(0.0, 0.0,-1.0); 
 
+
+    scalpel = new cMultiMesh();
+    world->addChild(scalpel);
+    scalpel->loadFromFile("./box.obj");
+    scalpel->scale(0.25);
+
+    scalpel->setLocalPos(0, 0, 1);
 
     //-----------------------------------------------------------------------
     // HAPTIC DEVICES / TOOLS
@@ -551,11 +576,7 @@ int main(int argc, char* argv[])
     //-----------------------------------------------------------------------
     // START SIMULATION
     //-----------------------------------------------------------------------
-
-    stimuli = LoadStimuli("./stimuli.csv");
-
-    output_file << "idx,surface,x,y,multimodal,time,force,reward,lost_reward,tot_reward,force_ol\n";
-
+    // 
     // create a thread which starts the main haptics rendering loop
     hapticsThread = new cThread();
     hapticsThread->start(updateHaptics, CTHREAD_PRIORITY_HAPTICS);
@@ -814,8 +835,9 @@ void updateHaptics(void)
         cVector3d pos;
         hapticDevice->getPosition(pos);
         pos.mul(workspaceScaleFactor);
-        device->setLocalPos(pos);
-        
+        //device->setLocalPos(pos);
+        scalpel->setLocalPos(pos);
+
         if (!next_trial && !trial_started) {
             if (pos.z() > device_start_pos->getLocalPos().z()) {
                 device_start_pos->setEnabled(false, true);
@@ -864,7 +886,7 @@ void updateHaptics(void)
         // scale force
         force.mul(deviceForceScale / workspaceScaleFactor);
         
-        if (trial_started && !force_over_limit && force.length() > kMaxForce[active_surface]) {
+        if (trial_started && !force_over_limit && force.length() > max_force[active_surface]) {
             cMaterial mat;
             mat.setRedCrimson();
             mat.setShininess(100);
