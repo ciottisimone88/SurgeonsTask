@@ -398,10 +398,11 @@ int main(int argc, char* argv[])
 
     scalpel = new cMultiMesh();
     world->addChild(scalpel);
-    scalpel->loadFromFile("./box.obj");
-    scalpel->scale(0.25);
-
-    scalpel->setLocalPos(0, 0, 1);
+    scalpel->loadFromFile("./untitled.obj");
+    scalpel->scale(100.0);
+    scalpel->m_material->setRed();
+    scalpel->m_material->setShininess(100);
+    scalpel->setLocalPos(0.0, 0.0, 0.0);
 
     //-----------------------------------------------------------------------
     // HAPTIC DEVICES / TOOLS
@@ -436,6 +437,7 @@ int main(int argc, char* argv[])
     world->addChild(device);
     device->m_material->setWhite();
     device->m_material->setShininess(100);
+    device->setLocalPos(0.0, 0.0, 0.0);
 
     device_start_pos = new cShapeSphere(deviceRadius);
     world->addChild(device_start_pos);
