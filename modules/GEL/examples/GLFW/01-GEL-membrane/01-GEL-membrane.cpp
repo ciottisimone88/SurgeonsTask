@@ -398,8 +398,8 @@ int main(int argc, char* argv[])
 
     scalpel = new cMultiMesh();
     world->addChild(scalpel);
-    scalpel->loadFromFile("./untitled.obj");
-    scalpel->scale(100.0);
+    scalpel->loadFromFile("./scalpel.obj");
+    scalpel->scale(1.0);
     scalpel->m_material->setRed();
     scalpel->m_material->setShininess(100);
     scalpel->setLocalPos(0.0, 0.0, 0.0);
@@ -416,6 +416,14 @@ int main(int argc, char* argv[])
 
     // retrieve information about the current haptic device
     cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
+
+    std::cout << hapticDeviceInfo.m_maxAngularDamping << ","
+        << hapticDeviceInfo.m_maxAngularStiffness << ","
+        << hapticDeviceInfo.m_maxAngularTorque << ","
+        << hapticDeviceInfo.m_maxLinearDamping << ","
+        << hapticDeviceInfo.m_maxLinearStiffness << ","
+        << hapticDeviceInfo.m_maxLinearForce << ","
+        << hapticDeviceInfo.m_workspaceRadius << "\n";
 
     // open connection to haptic device
     hapticDevice->open();
