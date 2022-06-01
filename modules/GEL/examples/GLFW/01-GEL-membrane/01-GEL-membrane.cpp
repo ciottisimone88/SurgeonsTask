@@ -363,7 +363,7 @@ int main(int argc, char* argv[])
     world->addChild(camera);
 
     // position and orient the camera
-    camera->set(cVector3d(2.0, 0.0, 2.0),    // camera position (eye)
+    camera->set(cVector3d(1.0, 0.0, 1.0),    // camera position (eye)
                 cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
                 cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
 
@@ -393,16 +393,18 @@ int main(int argc, char* argv[])
     light->setEnabled(true);
 
     // define direction of light beam
-    light->setDir(0.0, 0.0,-1.0); 
+    light->setDir(0.0, 0.0, 0.0); 
 
 
     scalpel = new cMultiMesh();
     world->addChild(scalpel);
-    scalpel->loadFromFile("./scalpel.obj");
-    scalpel->scale(1.0);
-    scalpel->m_material->setRed();
+    scalpel->loadFromFile("scalpel.stl");
+    scalpel->scale(0.005);
+    scalpel->m_material->setGraySilver();
     scalpel->m_material->setShininess(100);
     scalpel->setLocalPos(0.0, 0.0, 0.0);
+    scalpel->setShowFrame(true);
+    scalpel->setUseCulling(true);
 
     //-----------------------------------------------------------------------
     // HAPTIC DEVICES / TOOLS
@@ -446,6 +448,7 @@ int main(int argc, char* argv[])
     device->m_material->setWhite();
     device->m_material->setShininess(100);
     device->setLocalPos(0.0, 0.0, 0.0);
+    device->setEnabled(false, true);
 
     device_start_pos = new cShapeSphere(deviceRadius);
     world->addChild(device_start_pos);
@@ -746,6 +749,16 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
         mirroredDisplay = !mirroredDisplay;
         camera->setMirrorVertical(mirroredDisplay);
     }
+    else if (a_key == GLFW_KEY_KP_ADD) {
+        cVector3d cam_pos = camera->getLocalPos();
+        cam_pos = cam_pos + cVector3d(-0.1,0.0,0.1);
+        camera->setLocalPos(cam_pos);
+    }
+    else if (a_key == GLFW_KEY_KP_SUBTRACT) {
+        cVector3d cam_pos = camera->getLocalPos();
+        cam_pos = cam_pos + cVector3d(0.1, 0.0, -0.1);
+        camera->setLocalPos(cam_pos);
+    }
 }
 
 //---------------------------------------------------------------------------
@@ -816,6 +829,7 @@ void updateGraphics(void)
 
 void updateHaptics(void)
 {
+    cMatrix3d rot;
     // initialize precision clock
     cPrecisionClock clock;
     clock.reset();
@@ -844,9 +858,11 @@ void updateHaptics(void)
         // read position from haptic device
         cVector3d pos;
         hapticDevice->getPosition(pos);
+        hapticDevice->getRotation(rot);
         pos.mul(workspaceScaleFactor);
         //device->setLocalPos(pos);
         scalpel->setLocalPos(pos);
+        scalpel->setLocalRot(rot);
 
         if (!next_trial && !trial_started) {
             if (pos.z() > device_start_pos->getLocalPos().z()) {
