@@ -110,6 +110,8 @@ double cursorWorkspaceRadius;
 // a label to display the rate [Hz] at which the simulation is running
 cLabel* labelRates;
 
+cLabel* labelTime;
+
 // flag to indicate if the haptic simulation currently running
 bool simulationRunning = false;
 
@@ -141,7 +143,13 @@ int swapInterval = 1;
 string resourceRoot;
 
 bool force_over_limit{ false };
+bool max_trial_reached{ false };
+bool max_time_reached{ false };
 bool trial_started{ false };
+std::int32_t lost_trial{0};
+
+cPrecisionClock exec_time;
+cPrecisionClock resp_time;
 
 //---------------------------------------------------------------------------
 // GEL
@@ -175,6 +183,7 @@ std::int32_t trial_idx{ -1 };
 double tot_reward{ 0.0 };
 double reward{ 0.0 };
 double lost_reward{ 0.0 };
+double tot_lost_reward{ 0.0 };
 
 // deformable world
 cGELWorld* defWorld;
@@ -196,6 +205,21 @@ cShapeSphere* device_start_pos;
 double radius;
 
 cMultiMesh* scalpel;
+
+double r_camera{ 2.0 };
+double camera_angle{ 0.0 };
+
+cBitmap* coin_green;
+cBitmap* coin_red;
+
+cBitmap* coin_green_1;
+cBitmap* coin_green_2;
+cBitmap* coin_green_3;
+cBitmap* coin_green_4;
+cBitmap* coin_green_5;
+
+double w_coin;
+double h_coin;
 
 //---------------------------------------------------------------------------
 // DECLARED FUNCTIONS
@@ -363,7 +387,7 @@ int main(int argc, char* argv[])
     world->addChild(camera);
 
     // position and orient the camera
-    camera->set(cVector3d(1.0, 0.0, 1.0),    // camera position (eye)
+    camera->set(cVector3d(r_camera, 0.0, 0.0),    // camera position (eye)
                 cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
                 cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
 
@@ -403,8 +427,9 @@ int main(int argc, char* argv[])
     scalpel->m_material->setGraySilver();
     scalpel->m_material->setShininess(100);
     scalpel->setLocalPos(0.0, 0.0, 0.0);
-    scalpel->setShowFrame(true);
+    scalpel->setShowFrame(false);
     scalpel->setUseCulling(true);
+
 
     //-----------------------------------------------------------------------
     // HAPTIC DEVICES / TOOLS
@@ -450,7 +475,7 @@ int main(int argc, char* argv[])
     device->setLocalPos(0.0, 0.0, 0.0);
     device->setEnabled(false, true);
 
-    device_start_pos = new cShapeSphere(deviceRadius);
+    device_start_pos = new cShapeSphere(deviceRadius*0.5);
     world->addChild(device_start_pos);
     device_start_pos->m_material->setGreenDark();
     device_start_pos->m_material->setShininess(100);
@@ -505,8 +530,8 @@ int main(int argc, char* argv[])
 
         // let's create a some environment mapping
         shared_ptr<cTexture2d> texture(new cTexture2d());
-        if (i == 0) fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/bio.jpg"));
-        else        fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/stone.jpg"));
+        if (i == 0) fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/bio_rev.jpg"));
+        else        fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/stone_rev.jpg"));
 
         if (!fileload) {
             cout << "Error - Texture failed to load correctly." << endl;
@@ -569,11 +594,47 @@ int main(int argc, char* argv[])
 
     // create a font
     cFontPtr font = NEW_CFONTCALIBRI20();
+    cFontPtr font_time = NEW_CFONTCALIBRI72();
 
     // create a label to display the haptic and graphic rate of the simulation
     labelRates = new cLabel(font);
     camera->m_frontLayer->addChild(labelRates);
     labelRates->m_fontColor.setBlack();
+
+    labelTime = new cLabel(font_time);
+    camera->m_frontLayer->addChild(labelTime);
+    labelTime->m_fontColor.setBlack();
+
+    coin_green = new cBitmap();
+    coin_red = new cBitmap();
+    
+    camera->m_frontLayer->addChild(coin_green);
+    camera->m_frontLayer->addChild(coin_red);
+
+    coin_green->loadFromFile("./coin_green.png");
+    coin_red->loadFromFile("./coin_red.png");
+
+    w_coin = coin_green->m_texture->m_image->getWidth();
+    h_coin = coin_red->m_texture->m_image->getHeight();
+
+    coin_green->setSize(0.25 * w_coin, 0.25 * h_coin);
+    coin_red->setSize(0.25 * w_coin, 0.25 * h_coin);
+    
+    w_coin = coin_green->getWidth();
+    h_coin = coin_red->getHeight();
+
+    coin_green->setLocalPos(width - w_coin, h_coin);
+    coin_red->setLocalPos(w_coin, h_coin);
+
+    coin_green->setEnabled(false);
+    coin_red->setEnabled(false);
+    
+    /*
+    coin_green->setUseTransparency(true);
+    coin_red->setUseTransparency(true);
+
+    coin_green->setTransparencyLevel(1.0);
+    coin_red->setTransparencyLevel(0.8);*/
 
     // create a background
     cBackground* background = new cBackground();
@@ -750,14 +811,44 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
         camera->setMirrorVertical(mirroredDisplay);
     }
     else if (a_key == GLFW_KEY_KP_ADD) {
-        cVector3d cam_pos = camera->getLocalPos();
-        cam_pos = cam_pos + cVector3d(-0.1,0.0,0.1);
-        camera->setLocalPos(cam_pos);
+        camera_angle += 0.05;
+        double x_pos = r_camera * std::cos(camera_angle);
+        double z_pos = r_camera * std::sin(camera_angle);
+        camera->set(cVector3d(x_pos, 0.0, z_pos),    // camera position (eye)
+                    cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
+                    cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
+
+        std::cout << "Camera position: " << x_pos << ",0.0," << z_pos << "\n";
     }
     else if (a_key == GLFW_KEY_KP_SUBTRACT) {
-        cVector3d cam_pos = camera->getLocalPos();
-        cam_pos = cam_pos + cVector3d(0.1, 0.0, -0.1);
-        camera->setLocalPos(cam_pos);
+        camera_angle -= 0.05;
+        double x_pos = r_camera * std::cos(camera_angle);
+        double z_pos = r_camera * std::sin(camera_angle);
+        camera->set(cVector3d(x_pos, 0.0, z_pos),    // camera position (eye)
+            cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
+            cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
+
+        std::cout << "Camera position: " << x_pos << ",0.0," << z_pos << "\n";
+    }
+    else if (a_key == GLFW_KEY_KP_MULTIPLY) {
+        r_camera += 0.25;
+        double x_pos = r_camera * std::cos(camera_angle);
+        double z_pos = r_camera * std::sin(camera_angle);
+        camera->set(cVector3d(x_pos, 0.0, z_pos),    // camera position (eye)
+            cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
+            cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
+
+        std::cout << "Camera position: " << x_pos << ",0.0," << z_pos << "\n";
+    }
+    else if (a_key == GLFW_KEY_KP_DIVIDE) {
+        r_camera -= 0.25;
+        double x_pos = r_camera * std::cos(camera_angle);
+        double z_pos = r_camera * std::sin(camera_angle);
+        camera->set(cVector3d(x_pos, 0.0, z_pos),    // camera position (eye)
+            cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
+            cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
+
+        std::cout << "Camera position: " << x_pos << ",0.0," << z_pos << "\n";
     }
 }
 
@@ -794,9 +885,19 @@ void updateGraphics(void)
     labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
         cStr(freqCounterHaptics.getFrequency(), 0) + " Hz");
 
+    if (trial_started) labelTime->setText(cStr(exec_time.getCurrentTimeSeconds(), 0) + "s");
+    else labelTime->setText("--- s");
+
     // update position of label
     labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
 
+    labelTime->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), height - 3 * labelRates->getHeight());
+
+    w_coin = coin_green->getWidth();
+    h_coin = coin_red->getHeight();
+
+    coin_green->setLocalPos(width - w_coin, h_coin*0.1);
+    coin_red->setLocalPos(w_coin*0.1, h_coin * 0.1);
 
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
@@ -829,13 +930,17 @@ void updateGraphics(void)
 
 void updateHaptics(void)
 {
+    bool iti;
+    const double kITI{2.0};
+    cPrecisionClock iti_timer;
     cMatrix3d rot;
     // initialize precision clock
     cPrecisionClock clock;
     clock.reset();
 
-    cPrecisionClock exec_time;
     exec_time.reset();
+
+    resp_time.reset();
 
     std::uint32_t user_switches{ 0 };
     std::uint32_t old_user_switches{ 0 };
@@ -845,7 +950,11 @@ void updateHaptics(void)
     simulationFinished = false;
 
     force_over_limit = false;
+    max_trial_reached = false;
+    max_time_reached = false;
     trial_started = false;
+    lost_trial = 0;
+    iti = false;
 
     // main haptic simulation loop
     while(simulationRunning) {   
@@ -864,11 +973,12 @@ void updateHaptics(void)
         scalpel->setLocalPos(pos);
         scalpel->setLocalRot(rot);
 
-        if (!next_trial && !trial_started) {
+        if (!next_trial && !trial_started && !iti) {
             if (pos.z() > device_start_pos->getLocalPos().z()) {
                 device_start_pos->setEnabled(false, true);
                 trial_started = true;
                 force_over_limit = false;
+                max_time_reached = false;
                 std::cout << "TRIAL STARTED\n";
                 exec_time.start(true);
             }
@@ -899,7 +1009,7 @@ void updateHaptics(void)
                     cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
                     cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness[active_surface], vel);
                     cVector3d tmpfrc = -1.0 * f;
-                    if (force_over_limit || !trial_started || next_trial) tmpfrc.zero();
+                    if (force_over_limit || max_time_reached || !trial_started || iti) tmpfrc.zero();
                     nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                 }
@@ -912,15 +1022,6 @@ void updateHaptics(void)
         // scale force
         force.mul(deviceForceScale / workspaceScaleFactor);
         
-        if (trial_started && !force_over_limit && force.length() > max_force[active_surface]) {
-            cMaterial mat;
-            mat.setRedCrimson();
-            mat.setShininess(100);
-            defObject[active_surface]->setMaterial(mat, true);
-            force_over_limit = true;
-            std::cout << "FORCE OVER LIMIT\n";
-        }
-
         hapticDevice->getUserSwitches(user_switches);
 
         if (!trial_started) old_user_switches = user_switches = 0;
@@ -928,19 +1029,44 @@ void updateHaptics(void)
         
         std::cout << old_user_switches << "," << user_switches << "\r";
 
-//        if (trial_started && user_switches == 0 && old_user_switches != 0) {
+        if (trial_started && !force_over_limit && force.length() > max_force[active_surface]) {
+            cMaterial mat;
+            mat.setRedCrimson();
+            mat.setShininess(100);
+            defObject[active_surface]->setMaterial(mat, true);
+            force_over_limit = true;
+            user_switches = 2;
+            std::cout << "FORCE OVER LIMIT\n";
+        }
+
+        if (trial_started && !max_time_reached && exec_time.getCurrentTimeSeconds() > max_time) {
+          max_time_reached = true;
+          user_switches = 2;
+          std::cout << "MAX TIME REACHED\n";
+        }
+
         if (trial_started && user_switches == 2) {
-            //
-            if (!force_over_limit) {
+            if (!force_over_limit && !max_time_reached) {
                 reward = fabs(pos.z());
                 lost_reward = 0.0;
-                tot_reward += reward;
-            }
-            else {
+                coin_green->setEnabled(true);
+            } else {
+                lost_trial++;
                 reward = 0;
                 lost_reward = fabs(pos.z());
+                coin_red->setEnabled(true);
             }
-            
+
+            if (lost_trial > trial_limit) {
+              tot_reward = tot_lost_reward = reward = lost_reward = 0;
+              lost_trial = 0;
+              max_trial_reached = true;
+            } else {
+              tot_reward += reward;
+              tot_lost_reward += lost_reward;
+              max_trial_reached = false;
+            }
+
             output_file << trial_idx << ","
                         << active_surface << ","
                         << active_point_x << ","
@@ -953,14 +1079,23 @@ void updateHaptics(void)
                         << tot_reward << ","
                         << force_over_limit << "\n";
 
-            if (force_over_limit) std::cout << "Lost Reward: " << reward << "\n";
-            else std::cout << "Total Reward: " << tot_reward << "\n";
-            device_start_pos->setEnabled(true, true);
+            std::cout << "Total Reward: " << tot_reward << "\n"
+                      << "Total LOST Reward: " << tot_lost_reward << "\n";
             trial_started = false;
-            next_trial = true;
+            iti = true;
+            iti_timer.start(true);
         }
 
-        if (multimodal_feedback == 0 || force_over_limit || !trial_started) force.zero();
+        if (iti && iti_timer.getCurrentTimeSeconds() > kITI) {
+            device_start_pos->setEnabled(true, true);
+            next_trial = true;
+            iti = false;
+            iti_timer.stop();
+            coin_green->setEnabled(false);
+            coin_red->setEnabled(false);
+        }
+
+        if (multimodal_feedback == 0 || force_over_limit || max_time_reached || !trial_started || iti) force.zero();
 
         // send forces to haptic device
         hapticDevice->setForce(force);
