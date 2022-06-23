@@ -400,7 +400,7 @@ int main(int argc, char* argv[])
     world->addChild(camera);
 
     // position and orient the camera
-    camera->set(cVector3d(r_camera, 0.0, 0.0),    // camera position (eye)
+    camera->set(cVector3d(r_camera*std::cos(0.785), 0.0, r_camera * std::sin(0.785)),    // camera position (eye)
                 cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
                 cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
 
@@ -432,7 +432,6 @@ int main(int argc, char* argv[])
     // define direction of light beam
     light->setDir(0.0, 0.0, 0.0); 
 
-
     scalpel = new cMultiMesh();
     world->addChild(scalpel);
     scalpel->loadFromFile("scalpel.stl");
@@ -442,7 +441,6 @@ int main(int argc, char* argv[])
     scalpel->setLocalPos(0.0, 0.0, 0.0);
     scalpel->setShowFrame(false);
     scalpel->setUseCulling(true);
-
 
     //-----------------------------------------------------------------------
     // HAPTIC DEVICES / TOOLS
@@ -544,7 +542,7 @@ int main(int argc, char* argv[])
         // let's create a some environment mapping
         shared_ptr<cTexture2d> texture(new cTexture2d());
         if (i == 0) fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/bio_rev.jpg"));
-        else        fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/stone_rev.jpg"));
+        else        fileload = texture->loadFromFile(RESOURCE_PATH("../resources/images/water_rev.jpg"));
 
         if (!fileload) {
             cout << "Error - Texture failed to load correctly." << endl;
@@ -899,7 +897,7 @@ void updateGraphics(void)
     labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
         cStr(freqCounterHaptics.getFrequency(), 0) + " Hz");
 
-    if (trial_started) labelTime->setText(cStr(exec_time.getCurrentTimeSeconds(), 0) + "s");
+    if (trial_started) labelTime->setText(cStr(max_time - exec_time.getCurrentTimeSeconds(), 0) + "s");
     else labelTime->setText("--- s");
 
     // update position of label
