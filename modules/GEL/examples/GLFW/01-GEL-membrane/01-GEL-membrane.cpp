@@ -211,14 +211,10 @@ cMultiMesh* scalpel;
 double r_camera{ 2.0 };
 double camera_angle{ 0.0 };
 
-cBitmap* coin_green;
-cBitmap* coin_red;
+const std::int32_t kNumCoins{ 100 };
 
-cBitmap* coin_green_1;
-cBitmap* coin_green_2;
-cBitmap* coin_green_3;
-cBitmap* coin_green_4;
-cBitmap* coin_green_5;
+cBitmap* coins_green[kNumCoins];
+cBitmap* coins_red[kNumCoins];
 
 double w_coin;
 double h_coin;
@@ -615,37 +611,34 @@ int main(int argc, char* argv[])
     labelTime = new cLabel(font_time);
     camera->m_frontLayer->addChild(labelTime);
     labelTime->m_fontColor.setBlack();
-
-    coin_green = new cBitmap();
-    coin_red = new cBitmap();
     
-    camera->m_frontLayer->addChild(coin_green);
-    camera->m_frontLayer->addChild(coin_red);
+    for (std::int32_t i = 0; i < kNumCoins; ++i) {
+        cBitmap* tmp_coin = new cBitmap();
+        camera->m_frontLayer->addChild(tmp_coin);
+        tmp_coin->loadFromFile("./coin_green.png");
+        w_coin = tmp_coin->m_texture->m_image->getWidth();
+        h_coin = tmp_coin->m_texture->m_image->getHeight();
+        tmp_coin->setSize(0.25 * w_coin, 0.25 * h_coin);
+        w_coin = tmp_coin->getWidth();
+        h_coin = tmp_coin->getHeight();
+        tmp_coin->setLocalPos(width - w_coin, h_coin*(i+1));
+        tmp_coin->setEnabled(false);
+        coins_green[i] = tmp_coin;
+    }
 
-    coin_green->loadFromFile("./coin_green.png");
-    coin_red->loadFromFile("./coin_red.png");
-
-    w_coin = coin_green->m_texture->m_image->getWidth();
-    h_coin = coin_red->m_texture->m_image->getHeight();
-
-    coin_green->setSize(0.25 * w_coin, 0.25 * h_coin);
-    coin_red->setSize(0.25 * w_coin, 0.25 * h_coin);
-    
-    w_coin = coin_green->getWidth();
-    h_coin = coin_red->getHeight();
-
-    coin_green->setLocalPos(width - w_coin, h_coin);
-    coin_red->setLocalPos(w_coin, h_coin);
-
-    coin_green->setEnabled(false);
-    coin_red->setEnabled(false);
-    
-    /*
-    coin_green->setUseTransparency(true);
-    coin_red->setUseTransparency(true);
-
-    coin_green->setTransparencyLevel(1.0);
-    coin_red->setTransparencyLevel(0.8);*/
+    for (std::int32_t i = 0; i < kNumCoins; ++i) {
+        cBitmap* tmp_coin = new cBitmap();
+        camera->m_frontLayer->addChild(tmp_coin);
+        tmp_coin->loadFromFile("./coin_red.png");
+        w_coin = tmp_coin->m_texture->m_image->getWidth();
+        h_coin = tmp_coin->m_texture->m_image->getHeight();
+        tmp_coin->setSize(0.25 * w_coin, 0.25 * h_coin);
+        w_coin = tmp_coin->getWidth();
+        h_coin = tmp_coin->getHeight();
+        tmp_coin->setLocalPos(w_coin, h_coin * (i + 1));
+        tmp_coin->setEnabled(false);
+        coins_red[i] = tmp_coin;
+    }
 
     // create a background
     cBackground* background = new cBackground();
@@ -905,11 +898,17 @@ void updateGraphics(void)
 
     labelTime->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), height - 3 * labelRates->getHeight());
 
-    w_coin = coin_green->getWidth();
-    h_coin = coin_red->getHeight();
-
-    coin_green->setLocalPos(width - w_coin, h_coin*0.1);
-    coin_red->setLocalPos(w_coin*0.1, h_coin * 0.1);
+    for (std::int32_t i = 0; i < kNumCoins; ++i) {
+        w_coin = coins_green[i]->getWidth();
+        h_coin = coins_green[i]->getHeight();
+        coins_green[i]->setLocalPos(width - w_coin, h_coin * 0.1 * (i + 1));
+    }
+    
+    for (std::int32_t i = 0; i < kNumCoins; ++i) {
+        w_coin = coins_red[i]->getWidth();
+        h_coin = coins_red[i]->getHeight();
+        coins_red[i]->setLocalPos(0.1 * w_coin, h_coin * 0.1 * (i + 1));
+    }
 
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
@@ -944,6 +943,8 @@ void updateHaptics(void)
 {
     bool iti;
     const double kITI{2.0};
+    std::int32_t num_green_coin;
+    std::int32_t num_red_coin;
     cPrecisionClock iti_timer;
     cMatrix3d rot;
     // initialize precision clock
@@ -966,6 +967,8 @@ void updateHaptics(void)
     max_time_reached = false;
     trial_started = false;
     lost_trial = 0;
+    num_green_coin = 0;
+    num_red_coin = 0;
     iti = false;
 
     // main haptic simulation loop
@@ -1061,16 +1064,21 @@ void updateHaptics(void)
             if (!force_over_limit && !max_time_reached) {
                 reward = fabs(pos.z());
                 lost_reward = 0.0;
-                coin_green->setEnabled(true);
+                coins_green[num_green_coin++]->setEnabled(true);
             } else {
                 lost_trial++;
                 reward = 0;
                 lost_reward = fabs(pos.z());
-                coin_red->setEnabled(true);
+                coins_red[num_red_coin++]->setEnabled(true);
             }
 
             if (lost_trial > trial_limit) {
               tot_reward = tot_lost_reward = reward = lost_reward = 0;
+              num_green_coin = num_red_coin = 0;
+              for (std::int32_t i = 0; i < kNumCoins; ++i) {
+                  coins_green[i]->setEnabled(false);
+                  coins_red[i]->setEnabled(false);
+              }
               lost_trial = 0;
               max_trial_reached = true;
             } else {
@@ -1112,8 +1120,6 @@ void updateHaptics(void)
             next_trial = true;
             iti = false;
             iti_timer.stop();
-            coin_green->setEnabled(false);
-            coin_red->setEnabled(false);
         } else {
             log_file << trial_idx << ","
                 << active_surface << ","
