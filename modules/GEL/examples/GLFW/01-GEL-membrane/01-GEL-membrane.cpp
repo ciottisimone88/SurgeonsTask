@@ -53,6 +53,7 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <ctime>
 
 //------------------------------------------------------------------------------
 using namespace chai3d;
@@ -170,7 +171,8 @@ std::vector<std::vector<std::int32_t>> stimuli(0);
 
 nlohmann::json config_file_json;
 std::ifstream config_file("./config.json");
-std::ofstream output_file;
+std::ofstream log_file;
+std::ofstream response_file;
 std::vector<double> max_force;
 double max_time;
 std::int32_t trial_limit;
@@ -298,14 +300,25 @@ int main(int argc, char* argv[])
 
     config_file >> config_file_json;
     config_file.close();
+    
+    /////////
+    std::time_t now = time(0);
+    std::tm* gmtm = std::gmtime(&now);
+    std::string root_file_name = std::to_string(gmtm->tm_year) + std::to_string(gmtm->tm_mon) + std::to_string(gmtm->tm_mday);
+    log_file.open(root_file_name + config_file_json["name"].get<std::string>() + "_log.csv");
+    response_file.open(root_file_name + config_file_json["name"].get<std::string>() + "_response.csv");
 
-    output_file.open(config_file_json["name"].get<std::string>() + "_data.csv");
     max_force = config_file_json["force_limit"].get<std::vector<double>>();
     max_time = config_file_json["max_time"].get<double>();
     trial_limit = config_file_json["trial_limit"].get<std::int32_t>();
     stiffness = config_file_json["stiffness"].get<std::vector<double>>();
 
-    output_file << "idx,surface,x,y,multimodal,time,force,reward,lost_reward,tot_reward,force_ol\n";
+    log_file << "trial_idx,surface,x,y,multimodal,elap_time,force_x,force_y,force_z\n";
+    response_file << "trial_idx,surface,x,y,multimodal,"
+        << "elap_time,force_x,force_y,force_z,"
+        << "reward,lost_reward,total_reward,total_lost_reward,"
+        << "max_force,max_time,trial_limit,stiffness,"
+        << "force_over_limit,max_time_reached,max_trial_reached\n";
 
     //-----------------------------------------------------------------------
     // OPEN GL - WINDOW DISPLAY
@@ -865,7 +878,8 @@ void close(void)
     // close haptic device
     hapticDevice->close();
 
-    output_file.close();
+    log_file.close();
+    response_file.close();
 
     // delete resources
     delete hapticsThread;
@@ -1067,17 +1081,26 @@ void updateHaptics(void)
               max_trial_reached = false;
             }
 
-            output_file << trial_idx << ","
-                        << active_surface << ","
-                        << active_point_x << ","
-                        << active_point_y << ","
-                        << multimodal_feedback << ","
-                        << exec_time.stop() << ","
-                        << force.length() << ","
-                        << reward << ","
-                        << lost_reward << ","
-                        << tot_reward << ","
-                        << force_over_limit << "\n";
+            response_file << trial_idx << ","
+                << active_surface << ","
+                << active_point_x << ","
+                << active_point_y << ","
+                << multimodal_feedback << ","
+                << exec_time.stop() << ","
+                << force.x() << ","
+                << force.y() << ","
+                << force.z() << ","
+                << reward << ","
+                << lost_reward << ","
+                << tot_reward << ","
+                << tot_lost_reward << ","
+                << max_force[active_surface] << ","
+                << max_time << ","
+                << trial_limit << ","
+                << stiffness[active_surface] << ","
+                << force_over_limit << ","
+                << max_time_reached << ","
+                << max_trial_reached << "\n";
 
             std::cout << "Total Reward: " << tot_reward << "\n"
                       << "Total LOST Reward: " << tot_lost_reward << "\n";
@@ -1093,6 +1116,16 @@ void updateHaptics(void)
             iti_timer.stop();
             coin_green->setEnabled(false);
             coin_red->setEnabled(false);
+        } else {
+            log_file << trial_idx << ","
+                << active_surface << ","
+                << active_point_x << ","
+                << active_point_y << ","
+                << multimodal_feedback << ","
+                << exec_time.getCurrentTimeSeconds() << ","
+                << force.x() << ","
+                << force.y() << ","
+                << force.z() << "\n";
         }
 
         if (multimodal_feedback == 0 || force_over_limit || max_time_reached || !trial_started || iti) force.zero();
