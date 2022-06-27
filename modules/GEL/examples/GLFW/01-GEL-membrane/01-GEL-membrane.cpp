@@ -149,6 +149,8 @@ bool max_time_reached{ false };
 bool trial_started{ false };
 std::int32_t lost_trial{0};
 
+const double kTestSphereRadius{ 0.005 };
+
 cPrecisionClock exec_time;
 cPrecisionClock resp_time;
 
@@ -203,6 +205,8 @@ cGELSkeletonNode* nodes[kNumSurf][kNumNodeX][kNumNodeY][kNumNodeZ];
 cShapeSphere* device;
 double deviceRadius;
 
+cShapeSphere* test_sphere;
+
 const double kStartPosRadius{ 0.05 };
 
 // haptic device model
@@ -219,7 +223,7 @@ cMultiMesh* scalpel;
 double r_camera{ 2.0 };
 double camera_angle{ 0.785/2.0 };
 
-const std::int32_t kNumCoins{ 10 };
+const std::int32_t kNumCoins{ 80 };
 
 cBitmap* coins_green[kNumCoins];
 cBitmap* coins_red[kNumCoins];
@@ -448,11 +452,23 @@ int main(int argc, char* argv[])
     scalpel = new cMultiMesh();
     world->addChild(scalpel);
     scalpel->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/scalpel.stl"));
+    scalpel->setUseMaterial(true);
     scalpel->m_material->setGraySilver();
     scalpel->m_material->setShininess(100);
     scalpel->setLocalPos(0.0, 0.0, 0.0);
-    scalpel->setShowFrame(false);
+    scalpel->setShowFrame(true);
     scalpel->setUseCulling(true);
+    scalpel->computeBoundaryBox();
+    scalpel->setShowBoundaryBox(true);    
+
+    test_sphere = new cShapeSphere(kTestSphereRadius);
+    world->addChild(test_sphere);
+    test_sphere->m_material->setRedLightCoral();
+    test_sphere->m_material->setShininess(100);
+    test_sphere->setUseTransparency(true);
+    test_sphere->setTransparencyLevel(0.5);
+    test_sphere->setLocalPos(0.0, 0.0, 0.0);
+    test_sphere->setEnabled(true);
 
     active_point_sphere = new cShapeSphere(kActivePointRadius);
     world->addChild(active_point_sphere);
@@ -472,14 +488,6 @@ int main(int argc, char* argv[])
 
     // retrieve information about the current haptic device
     cHapticDeviceInfo hapticDeviceInfo = hapticDevice->getSpecifications();
-
-    std::cout << hapticDeviceInfo.m_maxAngularDamping << ","
-        << hapticDeviceInfo.m_maxAngularStiffness << ","
-        << hapticDeviceInfo.m_maxAngularTorque << ","
-        << hapticDeviceInfo.m_maxLinearDamping << ","
-        << hapticDeviceInfo.m_maxLinearStiffness << ","
-        << hapticDeviceInfo.m_maxLinearForce << ","
-        << hapticDeviceInfo.m_workspaceRadius << "\n";
 
     // open connection to haptic device
     hapticDevice->open();
@@ -584,7 +592,10 @@ int main(int argc, char* argv[])
                     newNode->m_pos.set((-kGEMSide + 2.0 * kGEMSphereRadius * (double)x), (-kGEMSide + 2.0 * kGEMSphereRadius * (double)y), (2.0 * kGEMSphereRadius * (double)z));
                     newNode->m_kDampingPos = 0.1 * 0.25 * stiffness[i];
                     // set corner nodes as fixed
-                    if ((x == 0 && y == 9) || (x == 9 && y == 0) || (x == 9 && y == 9) || (x == 0 && y == 0)) newNode->m_fixed = true;
+                    if ((x == 0 && y == kNumNodeY - 1) || 
+                        (x == kNumNodeX - 1 && y == 0) || 
+                        (x == kNumNodeX - 1 && y == kNumNodeY - 1) || 
+                        (x == 0 && y == 0)) newNode->m_fixed = true;
                 }
             }
         }
@@ -635,7 +646,7 @@ int main(int argc, char* argv[])
         tmp_coin->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/coin_green.png"));
         w_coin = tmp_coin->m_texture->m_image->getWidth();
         h_coin = tmp_coin->m_texture->m_image->getHeight();
-        tmp_coin->setSize(0.08 * w_coin, 0.08 * h_coin);
+        tmp_coin->setSize(0.5 * w_coin, 0.5 * h_coin);
         tmp_coin->setLocalPos(0.0, 0.0);
         tmp_coin->setEnabled(false);
         coins_green[i] = tmp_coin;
@@ -647,7 +658,7 @@ int main(int argc, char* argv[])
         tmp_coin->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/red_coin.png"));
         w_coin = tmp_coin->m_texture->m_image->getWidth();
         h_coin = tmp_coin->m_texture->m_image->getHeight();
-        tmp_coin->setSize(0.08 * w_coin, 0.08 * h_coin);
+        tmp_coin->setSize(0.5 * w_coin, 0.5 * h_coin);
         tmp_coin->setLocalPos(0.0, 0.0);
         tmp_coin->setEnabled(false);
         coins_red[i] = tmp_coin;
@@ -919,7 +930,6 @@ void updateGraphics(void)
     // update skins deformable objects
     defWorld->updateSkins(true);
 
-
     /////////////////////////////////////////////////////////////////////
     // RENDER SCENE
     /////////////////////////////////////////////////////////////////////
@@ -960,6 +970,8 @@ void updateHaptics(void)
     std::uint32_t user_switches{ 0 };
     std::uint32_t old_user_switches{ 0 };
 
+    cVector3d test_sphere_pos;
+
     // simulation in now running
     simulationRunning  = true;
     simulationFinished = false;
@@ -989,6 +1001,9 @@ void updateHaptics(void)
         //device->setLocalPos(pos);
         scalpel->setLocalPos(pos);
         scalpel->setLocalRot(rot);
+
+        test_sphere_pos = scalpel->getLocalPos() + scalpel->getLocalRot() * cVector3d(-1.0, 0.0, 0.0);
+        test_sphere->setLocalPos(test_sphere_pos);
 
         if (!next_trial && !trial_started) {
             if (device_start_pos->getLocalPos().distance(pos) <= kStartPosRadius) {
@@ -1025,7 +1040,7 @@ void updateHaptics(void)
             for (int y = 0; y < kNumNodeY; y++) {
                 for (int x = 0; x < kNumNodeX; x++) {
                     cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
-                    cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness[active_surface], vel);
+                    cVector3d f = computeForce(test_sphere->getLocalPos(), kGEMSphereRadius, nodePos, kGEMSphereRadius, stiffness[active_surface], vel);
                     cVector3d tmpfrc = -1.0 * f;
                     if (force_over_limit || max_time_reached || !trial_started) tmpfrc.zero();
                     nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
