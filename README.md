@@ -1,5 +1,6 @@
 # SurgeonsTask
 
-- [] Modificare centro di rotazione del bisturi
+- [] Salvare scalpel position e velocity
+- [] Salvare deformazione attuale
 - [] Modificare proporzione token
 - [] Modificare texture verde
