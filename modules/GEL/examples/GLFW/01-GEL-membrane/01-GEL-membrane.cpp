@@ -79,6 +79,8 @@ bool fullscreen = false;
 // mirrored display
 bool mirroredDisplay = false;
 
+bool inst_first{ true };
+bool inst_second{ false };
 
 //---------------------------------------------------------------------------
 // DECLARED VARIABLES
@@ -112,6 +114,9 @@ double cursorWorkspaceRadius;
 cLabel* labelRates;
 
 cLabel* labelTime;
+
+cLabel* labelInst;
+cLabel* labelInstSecond;
 
 // flag to indicate if the haptic simulation currently running
 bool simulationRunning = false;
@@ -460,6 +465,7 @@ int main(int argc, char* argv[])
     scalpel->setUseCulling(true);
     scalpel->computeBoundaryBox();
     scalpel->setShowBoundaryBox(false);    
+    scalpel->setEnabled(false);
 
     test_sphere = new cShapeSphere(kTestSphereRadius);
     world->addChild(test_sphere);
@@ -510,7 +516,8 @@ int main(int argc, char* argv[])
     world->addChild(device_start_pos);
     device_start_pos->m_material->setGreenDark();
     device_start_pos->m_material->setShininess(100);
-    device_start_pos->setLocalPos(0.0, 0.0, 0.5);
+    device_start_pos->setLocalPos(-0.5, 0.0, 0.5);
+    device_start_pos->setEnabled(false);
 
     //-----------------------------------------------------------------------
     // COMPOSE THE VIRTUAL SCENE
@@ -629,17 +636,46 @@ int main(int argc, char* argv[])
 
     // create a font
     cFontPtr font = NEW_CFONTCALIBRI20();
+    cFontPtr font_inst = NEW_CFONTCALIBRI40();
     cFontPtr font_time = NEW_CFONTCALIBRI72();
 
     // create a label to display the haptic and graphic rate of the simulation
     labelRates = new cLabel(font);
     camera->m_frontLayer->addChild(labelRates);
     labelRates->m_fontColor.setBlack();
+    labelRates->setEnabled(false);
 
     labelTime = new cLabel(font_time);
     camera->m_frontLayer->addChild(labelTime);
     labelTime->m_fontColor.setBlack();
+    labelTime->setEnabled(false);
     
+    labelInst = new cLabel(font_inst);
+    camera->m_frontLayer->addChild(labelInst);
+    labelInst->m_fontColor.setBlack();
+    labelInst->setColor(cColorf(0.0, 0.0, 0.0));
+    std::string testo_inst = "Questo test ha lo scopo di misurare le sue capacita' di usare indizi visivi e / o tattili.\n\n";
+    testo_inst += "Le verra' chiesto di deformare una serie di lastre virtuali che si susseguono. La deformazione puo' essere ottenuta tramite\nun bisturi controllato attraverso il dispositivo (braccio robotico) posto di fronte a lei. Questo dispositivo puo' erogare o meno\nun feedback tattile, ovvero una forza che si oppone al movimento di deformazione della lastra.\n\n";
+    testo_inst += "Col bisturi deve imprimere una pressione sulla lastra per deformarla e piu' riuscira' a deformarla senza perforarla maggiore\nsara' la ricompensa (monete verdi). Qualora la lastra venisse perforata, le verra' conteggiata una perdita (monete rosse).\n\n";
+    testo_inst += "Le varie lastre hanno un punto di rottura diverso, percio' dovra' porre attenzione a quanta pressione esercitera' sulla lastra stessa.\n\n";
+    testo_inst += "Il suo compito e' quello di guadagnare piu' monete verdi possibili e minimizzare quello delle monete rosse.\n\n";
+    testo_inst += "Prema un tasto per andare avanti";
+    labelInst->setText(testo_inst);
+    labelInst->setEnabled(false);
+
+    labelInstSecond = new cLabel(font_inst);
+    camera->m_frontLayer->addChild(labelInstSecond);
+    labelInstSecond->m_fontColor.setBlack();
+    labelInstSecond->setColor(cColorf(0.0, 0.0, 0.0));
+    testo_inst = "Per iniziare la singola prova deve toccare la sfera verde con il bisturi, portarlo sulla lastra\nnel punto indicato dalla sfera ed iniziare a premere sulla lastra.\n\n";
+    testo_inst += "Una volta ritenuto di aver raggiunto il massimo grado di deformazione, prema un tasto sul braccio robotico.\n";
+    testo_inst += "Se invece lei oltrepassa il punto di rottura della lastra o se impiega piu' di 10 secondi per deformare la lastra\nsenza premere uno dei tasti, la singola prova sara' considerata fallita e verranno assegnate le monete rosse.\n\n";
+    testo_inst += "Superata la soglia di 10 errori, il suo guadagno cumulato sara' totalmente perso, e dovra' ricominciare a guadagnare le monete verdi.\n\n";
+    testo_inst += "Prema un tasto per cominciare";
+
+    labelInstSecond->setText(testo_inst);
+    labelInstSecond->setEnabled(true);
+
     for (std::int32_t i = 0; i < kNumCoins; ++i) {
         cBitmap* tmp_coin = new cBitmap();
         camera->m_frontLayer->addChild(tmp_coin);
@@ -718,6 +754,8 @@ int main(int argc, char* argv[])
                 multimodal_feedback = stimuli[trial_idx][3];
             }
 
+            active_point_sphere->setLocalPos(8.0 * kGEMSphereRadius * active_point_x, 8.0 * kGEMSphereRadius * active_point_y, kGEMSphereRadius);
+            
             std::cout << "IDX: " << trial_idx << "\n";
             std::cout << "Active Surface: " << active_surface << "\n";
             std::cout << "Active Point X: " << active_point_x << "\n";
@@ -911,6 +949,9 @@ void updateGraphics(void)
 
     labelTime->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), height - 3 * labelRates->getHeight());
 
+    labelInst->setLocalPos((width - labelInst->getWidth()) / 2.0, (height - labelInst->getHeight()) / 2.0);
+    labelInstSecond->setLocalPos((width - labelInstSecond->getWidth()) / 2.0, (height - labelInstSecond->getHeight()) / 2.0);
+
     for (std::int32_t i = 0; i < kNumCoins; ++i) {
         w_coin = coins_green[i]->getWidth();
         h_coin = coins_green[i]->getHeight();
@@ -959,6 +1000,7 @@ void updateHaptics(void)
     std::int32_t num_red_coin;
    // cPrecisionClock iti_timer;
     cMatrix3d rot;
+    bool pre_trial_phase{ false };
     // initialize precision clock
     cPrecisionClock clock;
     clock.reset();
@@ -994,6 +1036,37 @@ void updateHaptics(void)
         // restart clock
         clock.start(true);
 
+        if (inst_first || inst_second) {
+            hapticDevice->getUserSwitches(user_switches);
+            //
+            if (user_switches == 1 || user_switches == 2) {
+                if (inst_first) {
+                    inst_first = false;
+                    inst_second = true;
+                    labelInst->setEnabled(false);
+                    labelInstSecond->setEnabled(true);
+                }
+                else {
+                    if (inst_second) {
+                        inst_first = false;
+                        inst_second = false;
+                        labelInstSecond->setEnabled(false);
+                        labelTime->setEnabled(true);
+                        labelRates->setEnabled(true);
+                        device_start_pos->setEnabled(true);
+                        scalpel->setEnabled(true);
+                    }
+                }
+            }
+            // integrate dynamics
+            defWorld->updateDynamics(time);
+            // send forces to haptic device
+            hapticDevice->setForce(cVector3d(0.0, 0.0, 0.0));
+            // signal frequency counter
+            freqCounterHaptics.signal(1);
+            continue;
+        }
+
         // read position from haptic device
         cVector3d pos;
         hapticDevice->getPosition(pos);
@@ -1013,12 +1086,21 @@ void updateHaptics(void)
         if (!next_trial && !trial_started) {
             if (device_start_pos->getLocalPos().distance(test_sphere_pos) <= kStartPosRadius) {
                 device_start_pos->setEnabled(false, true);
+                active_point_sphere->setEnabled(true);
                 defObject[active_surface]->setEnabled(true, true);
-                trial_started = true;
+                pre_trial_phase = true;
                 force_over_limit = false;
                 max_time_reached = false;
                 std::cout << "TRIAL STARTED\n";
                 exec_time.start(true);
+            }
+        }
+
+        if (pre_trial_phase) {
+            if (device_start_pos->getLocalPos().distance(test_sphere_pos) > 4.0 * kStartPosRadius) {
+                pre_trial_phase = false;
+                active_point_sphere->setEnabled(false);
+                trial_started = true;
             }
         }
 
@@ -1083,7 +1165,7 @@ void updateHaptics(void)
           std::cout << "MAX TIME REACHED\n";
         }
 
-        if (trial_started && user_switches == 1) {
+        if (trial_started && (user_switches == 1 || user_switches == 2)) {
             /****/
             cMaterial mat;
             mat.setWhite();
