@@ -158,14 +158,17 @@ cPrecisionClock resp_time;
 
 // Define some constants
 const std::int32_t kNumSurf{ 2 };
-const std::int32_t kNumNodeX{ 10 };
-const std::int32_t kNumNodeY{ 10 };
+const std::int32_t kNumNodeX{ 12 };
+const std::int32_t kNumNodeY{ 12 };
 const std::int32_t kNumNodeZ{ 1 };
 
-std::int32_t active_point_x{ -1 };
-std::int32_t active_point_y{ -1 };
+std::int32_t active_point_x{ 0 };
+std::int32_t active_point_y{ 0 };
 std::int32_t active_surface{ -1 };// -1 -> INVALID
 std::int32_t multimodal_feedback{ 0 };
+
+cShapeSphere* active_point_sphere;
+const double kActivePointRadius{ 0.05 };
 
 std::vector<std::vector<std::int32_t>> stimuli(0);
 
@@ -200,18 +203,23 @@ cGELSkeletonNode* nodes[kNumSurf][kNumNodeX][kNumNodeY][kNumNodeZ];
 cShapeSphere* device;
 double deviceRadius;
 
+const double kStartPosRadius{ 0.05 };
+
 // haptic device model
 cShapeSphere* device_start_pos;
 
 // radius of the dynamic model sphere (GEM)
 double radius;
 
+const double kGEMSphereRadius{ 0.05 };
+const double kGEMSide{ kGEMSphereRadius * kNumNodeX };
+
 cMultiMesh* scalpel;
 
 double r_camera{ 2.0 };
-double camera_angle{ 0.0 };
+double camera_angle{ 0.785/2.0 };
 
-const std::int32_t kNumCoins{ 100 };
+const std::int32_t kNumCoins{ 10 };
 
 cBitmap* coins_green[kNumCoins];
 cBitmap* coins_red[kNumCoins];
@@ -298,11 +306,20 @@ int main(int argc, char* argv[])
     config_file.close();
     
     /////////
+    std::string log_file_name;
+    std::string resp_file_name;
     std::time_t now = time(0);
     std::tm* gmtm = std::gmtime(&now);
+    std::string participant_name = config_file_json["name"].get<std::string>();
     std::string root_file_name = std::to_string(gmtm->tm_year) + std::to_string(gmtm->tm_mon) + std::to_string(gmtm->tm_mday);
-    log_file.open(root_file_name + config_file_json["name"].get<std::string>() + "_log.csv");
-    response_file.open(root_file_name + config_file_json["name"].get<std::string>() + "_response.csv");
+    log_file_name  = root_file_name + participant_name + "_log.csv";
+    resp_file_name = root_file_name + participant_name + "_response.csv";
+    if (participant_name == "test") {
+        log_file_name  = participant_name + "_log.csv";
+        resp_file_name = participant_name + "_response.csv";
+    }
+    log_file.open(log_file_name);
+    response_file.open(resp_file_name);
 
     max_force = config_file_json["force_limit"].get<std::vector<double>>();
     max_time = config_file_json["max_time"].get<double>();
@@ -396,7 +413,7 @@ int main(int argc, char* argv[])
     world->addChild(camera);
 
     // position and orient the camera
-    camera->set(cVector3d(r_camera*std::cos(0.785), 0.0, r_camera * std::sin(0.785)),    // camera position (eye)
+    camera->set(cVector3d(r_camera*std::cos(camera_angle), 0.0, r_camera * std::sin(camera_angle)),    // camera position (eye)
                 cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
                 cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
 
@@ -426,18 +443,23 @@ int main(int argc, char* argv[])
     light->setEnabled(true);
 
     // define direction of light beam
-    light->setDir(0.0, 0.0, 0.0); 
+    light->setDir(-10.0, 0.0, 0.0); 
 
     scalpel = new cMultiMesh();
     world->addChild(scalpel);
-    scalpel->loadFromFile("scalpel.stl");
-    scalpel->scale(0.005);
+    scalpel->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/scalpel.stl"));
     scalpel->m_material->setGraySilver();
     scalpel->m_material->setShininess(100);
     scalpel->setLocalPos(0.0, 0.0, 0.0);
     scalpel->setShowFrame(false);
     scalpel->setUseCulling(true);
 
+    active_point_sphere = new cShapeSphere(kActivePointRadius);
+    world->addChild(active_point_sphere);
+    active_point_sphere->m_material->setRedCrimson();
+    active_point_sphere->m_material->setShininess(100);
+    active_point_sphere->setLocalPos(0.0, 0.0, 0.0);
+    active_point_sphere->setEnabled(false);
     //-----------------------------------------------------------------------
     // HAPTIC DEVICES / TOOLS
     //-----------------------------------------------------------------------
@@ -473,16 +495,10 @@ int main(int argc, char* argv[])
     // forces actually sent to the haptic device
     deviceForceScale = 5.0;
 
-    // create a large sphere that represents the haptic device
     deviceRadius = 0.1;
-    device = new cShapeSphere(deviceRadius);
-    world->addChild(device);
-    device->m_material->setWhite();
-    device->m_material->setShininess(100);
-    device->setLocalPos(0.0, 0.0, 0.0);
-    device->setEnabled(false, true);
 
-    device_start_pos = new cShapeSphere(deviceRadius*0.5);
+    // create a large sphere that represents the haptic device
+    device_start_pos = new cShapeSphere(kStartPosRadius);
     world->addChild(device_start_pos);
     device_start_pos->m_material->setGreenDark();
     device_start_pos->m_material->setShininess(100);
@@ -497,7 +513,7 @@ int main(int argc, char* argv[])
     world->addChild(defWorld);
 
     // set default properties for skeleton nodes
-    cGELSkeletonNode::s_default_radius = 0.05;  // [m]
+    cGELSkeletonNode::s_default_radius = kGEMSphereRadius;  // [m]
     cGELSkeletonNode::s_default_kDampingPos = 2.5;
     cGELSkeletonNode::s_default_kDampingRot = 0.6;
     cGELSkeletonNode::s_default_mass = 0.002; // [kg]
@@ -505,7 +521,6 @@ int main(int argc, char* argv[])
     cGELSkeletonNode::s_default_color.setBlueCornflower();
     cGELSkeletonNode::s_default_useGravity = false;
     cGELSkeletonNode::s_default_gravity.set(0.00, 0.00, 0.00);
-    radius = cGELSkeletonNode::s_default_radius;
 
     // set default physical properties for links
     cGELSkeletonLink::s_default_kSpringElongation = 25.0;  // [N/m]
@@ -566,7 +581,7 @@ int main(int argc, char* argv[])
                     cGELSkeletonNode* newNode = new cGELSkeletonNode();
                     nodes[i][x][y][z] = newNode;
                     defObject[i]->m_nodes.push_front(newNode);
-                    newNode->m_pos.set((-0.45 + 2.0 * radius * (double)x), (-0.43 + 2.0 * radius * (double)y), (2.0 * radius * (double)z));
+                    newNode->m_pos.set((-kGEMSide + 2.0 * kGEMSphereRadius * (double)x), (-kGEMSide + 2.0 * kGEMSphereRadius * (double)y), (2.0 * kGEMSphereRadius * (double)z));
                     newNode->m_kDampingPos = 0.1 * 0.25 * stiffness[i];
                     // set corner nodes as fixed
                     if ((x == 0 && y == 9) || (x == 9 && y == 0) || (x == 9 && y == 9) || (x == 0 && y == 0)) newNode->m_fixed = true;
@@ -591,8 +606,10 @@ int main(int argc, char* argv[])
             }
         }
         //
+        defObject[i]->scaleXYZ(2.0 * kGEMSide, 2.0 * kGEMSide, 1.0);
         defObject[i]->connectVerticesToSkeleton(false);
         defObject[i]->m_showSkeletonModel = false;
+        defObject[i]->setEnabled(false, true);
     }
 
     //--------------------------------------------------------------------------
@@ -615,13 +632,11 @@ int main(int argc, char* argv[])
     for (std::int32_t i = 0; i < kNumCoins; ++i) {
         cBitmap* tmp_coin = new cBitmap();
         camera->m_frontLayer->addChild(tmp_coin);
-        tmp_coin->loadFromFile("./coin_green.png");
+        tmp_coin->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/coin_green.png"));
         w_coin = tmp_coin->m_texture->m_image->getWidth();
         h_coin = tmp_coin->m_texture->m_image->getHeight();
-        tmp_coin->setSize(0.25 * w_coin, 0.25 * h_coin);
-        w_coin = tmp_coin->getWidth();
-        h_coin = tmp_coin->getHeight();
-        tmp_coin->setLocalPos(width - w_coin, h_coin*(i+1));
+        tmp_coin->setSize(0.08 * w_coin, 0.08 * h_coin);
+        tmp_coin->setLocalPos(0.0, 0.0);
         tmp_coin->setEnabled(false);
         coins_green[i] = tmp_coin;
     }
@@ -629,13 +644,11 @@ int main(int argc, char* argv[])
     for (std::int32_t i = 0; i < kNumCoins; ++i) {
         cBitmap* tmp_coin = new cBitmap();
         camera->m_frontLayer->addChild(tmp_coin);
-        tmp_coin->loadFromFile("./coin_red.png");
+        tmp_coin->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/red_coin.png"));
         w_coin = tmp_coin->m_texture->m_image->getWidth();
         h_coin = tmp_coin->m_texture->m_image->getHeight();
-        tmp_coin->setSize(0.25 * w_coin, 0.25 * h_coin);
-        w_coin = tmp_coin->getWidth();
-        h_coin = tmp_coin->getHeight();
-        tmp_coin->setLocalPos(w_coin, h_coin * (i + 1));
+        tmp_coin->setSize(0.08 * w_coin, 0.08 * h_coin);
+        tmp_coin->setLocalPos(0.0, 0.0);
         tmp_coin->setEnabled(false);
         coins_red[i] = tmp_coin;
     }
@@ -692,24 +705,13 @@ int main(int argc, char* argv[])
                 active_point_x      = stimuli[trial_idx][1];
                 active_point_y      = stimuli[trial_idx][2];
                 multimodal_feedback = stimuli[trial_idx][3];
-                
-                cMaterial mat;
-                mat.setWhite();
-                mat.setShininess(100);
-
-                for (std::int32_t i = 0; i < kNumSurf; ++i) {
-                    defObject[i]->setEnabled(false, true);
-                    defObject[i]->setMaterial(mat, true);
-                }
-                defObject[active_surface]->setEnabled(true, true);
             }
 
-            system("cls");
             std::cout << "IDX: " << trial_idx << "\n";
             std::cout << "Active Surface: " << active_surface << "\n";
             std::cout << "Active Point X: " << active_point_x << "\n";
             std::cout << "Active Point Y: " << active_point_y << "\n";
-            std::cout << "Multi-modal Feedback: " << multimodal_feedback << "\n";
+            std::cout << "Multi-modal Feedback: " << multimodal_feedback << "\n\n";
 
             next_trial = false;
         }
@@ -901,7 +903,7 @@ void updateGraphics(void)
     for (std::int32_t i = 0; i < kNumCoins; ++i) {
         w_coin = coins_green[i]->getWidth();
         h_coin = coins_green[i]->getHeight();
-        coins_green[i]->setLocalPos(width - w_coin, h_coin * 0.1 * (i + 1));
+        coins_green[i]->setLocalPos(width - 1.1 * w_coin, h_coin * 0.1 * (i + 1));
     }
     
     for (std::int32_t i = 0; i < kNumCoins; ++i) {
@@ -941,11 +943,11 @@ void updateGraphics(void)
 
 void updateHaptics(void)
 {
-    bool iti;
-    const double kITI{2.0};
+    //bool iti;
+   // const double kITI{ 2.0 };
     std::int32_t num_green_coin;
     std::int32_t num_red_coin;
-    cPrecisionClock iti_timer;
+   // cPrecisionClock iti_timer;
     cMatrix3d rot;
     // initialize precision clock
     cPrecisionClock clock;
@@ -969,7 +971,7 @@ void updateHaptics(void)
     lost_trial = 0;
     num_green_coin = 0;
     num_red_coin = 0;
-    iti = false;
+    //iti = false;
 
     // main haptic simulation loop
     while(simulationRunning) {   
@@ -988,9 +990,10 @@ void updateHaptics(void)
         scalpel->setLocalPos(pos);
         scalpel->setLocalRot(rot);
 
-        if (!next_trial && !trial_started && !iti) {
-            if (pos.z() > device_start_pos->getLocalPos().z()) {
+        if (!next_trial && !trial_started) {
+            if (device_start_pos->getLocalPos().distance(pos) <= kStartPosRadius) {
                 device_start_pos->setEnabled(false, true);
+                defObject[active_surface]->setEnabled(true, true);
                 trial_started = true;
                 force_over_limit = false;
                 max_time_reached = false;
@@ -1024,7 +1027,7 @@ void updateHaptics(void)
                     cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
                     cVector3d f = computeForce(pos, deviceRadius, nodePos, radius, stiffness[active_surface], vel);
                     cVector3d tmpfrc = -1.0 * f;
-                    if (force_over_limit || max_time_reached || !trial_started || iti) tmpfrc.zero();
+                    if (force_over_limit || max_time_reached || !trial_started) tmpfrc.zero();
                     nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
                     force.add(f);
                 }
@@ -1050,17 +1053,25 @@ void updateHaptics(void)
             mat.setShininess(100);
             defObject[active_surface]->setMaterial(mat, true);
             force_over_limit = true;
-            user_switches = 2;
+            user_switches = 1;
             std::cout << "FORCE OVER LIMIT\n";
         }
 
         if (trial_started && !max_time_reached && exec_time.getCurrentTimeSeconds() > max_time) {
           max_time_reached = true;
-          user_switches = 2;
+          user_switches = 1;
           std::cout << "MAX TIME REACHED\n";
         }
 
-        if (trial_started && user_switches == 2) {
+        if (trial_started && user_switches == 1) {
+            /****/
+            cMaterial mat;
+            mat.setWhite();
+            mat.setShininess(100);
+            /****/
+            defObject[active_surface]->setEnabled(false, true);
+            defObject[active_surface]->setMaterial(mat, true);
+            /****/
             if (!force_over_limit && !max_time_reached) {
                 reward = fabs(pos.z());
                 lost_reward = 0.0;
@@ -1077,7 +1088,6 @@ void updateHaptics(void)
               num_green_coin = num_red_coin = 0;
               for (std::int32_t i = 0; i < kNumCoins; ++i) {
                   coins_green[i]->setEnabled(false);
-                  coins_red[i]->setEnabled(false);
               }
               lost_trial = 0;
               max_trial_reached = true;
@@ -1111,28 +1121,33 @@ void updateHaptics(void)
             std::cout << "Total Reward: " << tot_reward << "\n"
                       << "Total LOST Reward: " << tot_lost_reward << "\n";
             trial_started = false;
-            iti = true;
-            iti_timer.start(true);
+            //iti = true;
+            //iti_timer.start(true);
+            device_start_pos->setEnabled(true, true);
+            next_trial = true;
         }
-
-        if (iti && iti_timer.getCurrentTimeSeconds() > kITI) {
+        
+        /*if (iti && iti_timer.getCurrentTimeSeconds() > kITI) {
             device_start_pos->setEnabled(true, true);
             next_trial = true;
             iti = false;
             iti_timer.stop();
-        } else {
-            log_file << trial_idx << ","
-                << active_surface << ","
-                << active_point_x << ","
-                << active_point_y << ","
-                << multimodal_feedback << ","
-                << exec_time.getCurrentTimeSeconds() << ","
-                << force.x() << ","
-                << force.y() << ","
-                << force.z() << "\n";
-        }
+        } else {*/
+            if (trial_started) {
+                log_file << trial_idx << ","
+                    << active_surface << ","
+                    << active_point_x << ","
+                    << active_point_y << ","
+                    << multimodal_feedback << ","
+                    << exec_time.getCurrentTimeSeconds() << ","
+                    << force.x() << ","
+                    << force.y() << ","
+                    << force.z() << "\n";
+            }
+        //}
 
-        if (multimodal_feedback == 0 || force_over_limit || max_time_reached || !trial_started || iti) force.zero();
+        //if (multimodal_feedback == 0 || force_over_limit || max_time_reached || !trial_started || iti) force.zero();
+        if (multimodal_feedback == 0 || force_over_limit || max_time_reached || !trial_started) force.zero();
 
         // send forces to haptic device
         hapticDevice->setForce(force);
