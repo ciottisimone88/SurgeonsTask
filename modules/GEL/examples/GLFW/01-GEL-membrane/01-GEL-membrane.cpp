@@ -456,10 +456,10 @@ int main(int argc, char* argv[])
     scalpel->m_material->setGraySilver();
     scalpel->m_material->setShininess(100);
     scalpel->setLocalPos(0.0, 0.0, 0.0);
-    scalpel->setShowFrame(true);
+    scalpel->setShowFrame(false);
     scalpel->setUseCulling(true);
     scalpel->computeBoundaryBox();
-    scalpel->setShowBoundaryBox(true);    
+    scalpel->setShowBoundaryBox(false);    
 
     test_sphere = new cShapeSphere(kTestSphereRadius);
     world->addChild(test_sphere);
@@ -468,7 +468,7 @@ int main(int argc, char* argv[])
     test_sphere->setUseTransparency(true);
     test_sphere->setTransparencyLevel(0.5);
     test_sphere->setLocalPos(0.0, 0.0, 0.0);
-    test_sphere->setEnabled(true);
+    test_sphere->setEnabled(false);
 
     active_point_sphere = new cShapeSphere(kActivePointRadius);
     world->addChild(active_point_sphere);
@@ -971,6 +971,7 @@ void updateHaptics(void)
     std::uint32_t old_user_switches{ 0 };
 
     cVector3d test_sphere_pos;
+    cVector3d bb_obj;
 
     // simulation in now running
     simulationRunning  = true;
@@ -1002,11 +1003,15 @@ void updateHaptics(void)
         scalpel->setLocalPos(pos);
         scalpel->setLocalRot(rot);
 
-        test_sphere_pos = scalpel->getLocalPos() + scalpel->getLocalRot() * cVector3d(-1.0, 0.0, 0.0);
+        bb_obj = scalpel->getBoundaryMin();
+        bb_obj.z(0.01);
+        bb_obj.y(-0.001);
+
+        test_sphere_pos = scalpel->getLocalPos() + scalpel->getLocalRot() * bb_obj;
         test_sphere->setLocalPos(test_sphere_pos);
 
         if (!next_trial && !trial_started) {
-            if (device_start_pos->getLocalPos().distance(pos) <= kStartPosRadius) {
+            if (device_start_pos->getLocalPos().distance(test_sphere_pos) <= kStartPosRadius) {
                 device_start_pos->setEnabled(false, true);
                 defObject[active_surface]->setEnabled(true, true);
                 trial_started = true;
