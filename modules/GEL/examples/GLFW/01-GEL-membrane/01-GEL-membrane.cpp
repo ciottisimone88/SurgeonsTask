@@ -957,7 +957,7 @@ void updateHaptics(void)
   // main haptic simulation loop
   while(simulationRunning) {   
     // stop clock
-    double time_clock = cMin(0.001, clock.stop());
+    time_clock = cMin(0.001, clock.stop());
 
     // restart clock
     clock.start(true);
@@ -1111,11 +1111,11 @@ void updateHaptics(void)
       trial_started_ = false;
       /***/
       trial_idx_++;
-      if (trial_idx_ < stimuli_.size()) {
+      if (trial_idx_ < (std::int32_t)stimuli_.size()) {
         active_surface_      = stimuli_[trial_idx_][0] - 1;
-        active_point_x_      = stimuli[trial_idx_][1];
-        active_point_y_      = stimuli[trial_idx_][2];
-        multimodal_feedback_ = stimuli[trial_idx_][3];
+        active_point_x_      = stimuli_[trial_idx_][1];
+        active_point_y_      = stimuli_[trial_idx_][2];
+        multimodal_feedback_ = stimuli_[trial_idx_][3];
         active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
         scalpel_start_pos_->setEnabled(true);
       } else {
@@ -1123,16 +1123,36 @@ void updateHaptics(void)
       }
     }
     /****/
-    if (trial_started) {
-      log_file  << trial_idx << ","
-                << active_surface << ","
-                << active_point_x << ","
-                << active_point_y << ","
-                << multimodal_feedback << ","
-                << exec_time.getCurrentTimeSeconds() << ","
-                << force.x() << ","
-                << force.y() << ","
-                << force.z() << "\n";
+    if (trial_started_) {
+      /***/
+      scalpel_hp_pos = scalpel_hp_->getGlobalPos();
+      active_point_pos = active_point_->getGlobalPos();
+      /***/
+      log_file_   << trial_idx_                           << ","
+                  << active_surface_                      << ","
+                  << active_point_x_                      << ","
+                  << active_point_y_                      << ","
+                  << multimodal_feedback_                 << ","
+                  << stiffness_[active_surface_]          << ","
+                  << max_time_                            << ","
+                  << trial_limit_                         << ","
+                  << max_force_[active_surface_]          << ","
+                  << exec_timer_.getCurrentTimeSeconds()  << ","
+                  << scalpel_hp_pos.x()                   << ","
+                  << scalpel_hp_pos.y()                   << ","
+                  << scalpel_hp_pos.z()                   << ","
+                  << active_point_pos.x()                 << ","
+                  << active_point_pos.y()                 << ","
+                  << active_point_pos.z()                 << ","
+                  << active_point_def.x()                 << ","
+                  << active_point_def.y()                 << ","
+                  << active_point_def.z()                 << ","
+                  << force.x()                            << ","
+                  << force.y()                            << ","
+                  << force.z()                            << ","
+                  << haptic_device_vel.x()                << ","
+                  << haptic_device_vel.y()                << ","
+                  << haptic_device_vel.z()                << "\n";
     }
     /****/
     if (multimodal_feedback_ == 0 || !trial_started_) force.zero();
