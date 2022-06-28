@@ -79,9 +79,6 @@ bool fullscreen = false;
 // mirrored display
 bool mirroredDisplay = false;
 
-bool inst_first{ true };
-bool inst_second{ false };
-
 //---------------------------------------------------------------------------
 // DECLARED VARIABLES
 //---------------------------------------------------------------------------
@@ -113,11 +110,6 @@ double cursorWorkspaceRadius;
 // a label to display the rate [Hz] at which the simulation is running
 cLabel* labelRates;
 
-cLabel* labelTime;
-
-cLabel* labelInst;
-cLabel* labelInstSecond;
-
 // flag to indicate if the haptic simulation currently running
 bool simulationRunning = false;
 
@@ -148,95 +140,63 @@ int swapInterval = 1;
 // root resource path
 string resourceRoot;
 
-bool force_over_limit{ false };
-bool max_trial_reached{ false };
-bool max_time_reached{ false };
-bool trial_started{ false };
-std::int32_t lost_trial{0};
 
-const double kTestSphereRadius{ 0.005 };
-
-cPrecisionClock exec_time;
-cPrecisionClock resp_time;
-
-
+bool force_over_limit_{ false };
+bool max_trial_reached_{ false };
+bool max_time_reached_{ false };
+bool trial_started_{ false };
+std::int32_t lost_trial_{ 0 };
+cPrecisionClock exec_timer_;
+const std::int16_t kNumInst_{ 2 };
+std::int16_t inst_cnt_{ 0 };
+cLabel* label_inst_[kNumInst_];
+cLevel* level_time_;
+const std::int32_t kNumSurf_{ 2 };
+const std::int32_t kNumNodeX_{ 12 };
+const std::int32_t kNumNodeY_{ kNumNodeX_ };
+const std::int32_t kNumNodeZ{ 1 };
+std::int32_t active_point_x_{ 0 };
+std::int32_t active_point_y_{ 0 };
+std::int32_t active_surface_{ -1 };// -1 -> INVALID
+std::int32_t multimodal_feedback_{ 0 };
+cShapeSphere* active_point_;
+const double kGEMSphereRadius_{ 0.05 };
+const double kScalpelStartPosRadius_{ 0.05 };
+const double kActivePointRadius_{ 0.05 };
+const double kScalpelHPRadius_{ 0.005 };
+std::vector<std::vector<std::int32_t>> stimuli_(0);
+nlohmann::json config_file_json_;
+std::ifstream config_file_("./config.json");
+std::ofstream log_file_;
+std::ofstream response_file_;
+std::vector<double> max_force_;
+double max_time_;
+std::int32_t trial_limit_;
+std::vector<double> stiffness_;
+bool next_trial_{ true };
+std::int32_t trial_idx_{ -1 };
+double tot_reward_{ 0.0 };
+double reward_{ 0.0 };
+double lost_reward_{ 0.0 };
+double tot_lost_reward_{ 0.0 };
+cGELMesh* def_surf_[kNumSurf_];
+cMultiMesh* scalpel_;
+cShapeSphere* scalpel_hp_;
+cShapeSphere* scalpel_start_pos_;
+double camera_radius_{ 2.0 };
+double camera_angle_{ 0.785/2.0 };
+cBitmap* coin_green_;
+cBitmap* coin_red_;
+bool show_first_inst_{true};
+bool show_second_inst_{false};
 
 //---------------------------------------------------------------------------
 // GEL
 //---------------------------------------------------------------------------
-
-// Define some constants
-const std::int32_t kNumSurf{ 2 };
-const std::int32_t kNumNodeX{ 12 };
-const std::int32_t kNumNodeY{ 12 };
-const std::int32_t kNumNodeZ{ 1 };
-
-std::int32_t active_point_x{ 0 };
-std::int32_t active_point_y{ 0 };
-std::int32_t active_surface{ -1 };// -1 -> INVALID
-std::int32_t multimodal_feedback{ 0 };
-
-cShapeSphere* active_point_sphere;
-const double kActivePointRadius{ 0.05 };
-
-std::vector<std::vector<std::int32_t>> stimuli(0);
-
-nlohmann::json config_file_json;
-std::ifstream config_file("./config.json");
-std::ofstream log_file;
-std::ofstream response_file;
-std::vector<double> max_force;
-double max_time;
-std::int32_t trial_limit;
-// stiffness properties between the haptic device tool and the model (GEM)
-std::vector<double> stiffness;
-
-bool next_trial{ true };
-std::int32_t trial_idx{ -1 };
-
-double tot_reward{ 0.0 };
-double reward{ 0.0 };
-double lost_reward{ 0.0 };
-double tot_lost_reward{ 0.0 };
-
 // deformable world
 cGELWorld* defWorld;
-
-// object mesh
-cGELMesh* defObject[kNumSurf];
-
 // dynamic nodes
 cGELSkeletonNode* nodes[kNumSurf][kNumNodeX][kNumNodeY][kNumNodeZ];
-
-// haptic device model
-cShapeSphere* device;
-double deviceRadius;
-
-cShapeSphere* test_sphere;
-
-const double kStartPosRadius{ 0.05 };
-
-// haptic device model
-cShapeSphere* device_start_pos;
-
-// radius of the dynamic model sphere (GEM)
-double radius;
-
-const double kGEMSphereRadius{ 0.05 };
-const double kGEMSide{ kGEMSphereRadius * kNumNodeX };
-
-cMultiMesh* scalpel;
-
-double r_camera{ 2.0 };
-double camera_angle{ 0.785/2.0 };
-
-const std::int32_t kNumCoins{ 80 };
-
-cBitmap* coins_green[kNumCoins];
-cBitmap* coins_red[kNumCoins];
-
-double w_coin;
-double h_coin;
 
 //---------------------------------------------------------------------------
 // DECLARED FUNCTIONS
@@ -321,7 +281,7 @@ int main(int argc, char* argv[])
     std::string resp_file_name;
     std::time_t now = time(0);
     std::tm* gmtm = std::gmtime(&now);
-    std::string participant_name = config_file_json["name"].get<std::string>();
+    std::string participant_name = config_file_json_["name"].get<std::string>();
     std::string root_file_name = std::to_string(gmtm->tm_year) + std::to_string(gmtm->tm_mon) + std::to_string(gmtm->tm_mday);
     log_file_name  = root_file_name + participant_name + "_log.csv";
     resp_file_name = root_file_name + participant_name + "_response.csv";
@@ -329,20 +289,26 @@ int main(int argc, char* argv[])
         log_file_name  = participant_name + "_log.csv";
         resp_file_name = participant_name + "_response.csv";
     }
-    log_file.open(log_file_name);
-    response_file.open(resp_file_name);
+    log_file_.open(log_file_name);
+    response_file_.open(resp_file_name);
 
-    max_force = config_file_json["force_limit"].get<std::vector<double>>();
-    max_time = config_file_json["max_time"].get<double>();
-    trial_limit = config_file_json["trial_limit"].get<std::int32_t>();
-    stiffness = config_file_json["stiffness"].get<std::vector<double>>();
+    max_force_ = config_file_json_["force_limit"].get<std::vector<double>>();
+    max_time_ = config_file_json_["max_time"].get<double>();
+    trial_limit_ = config_file_json_["trial_limit"].get<std::int32_t>();
+    stiffness_ = config_file_json_["stiffness"].get<std::vector<double>>();
 
-    log_file << "trial_idx,surface,x,y,multimodal,elap_time,force_x,force_y,force_z\n";
-    response_file << "trial_idx,surface,x,y,multimodal,"
-        << "elap_time,force_x,force_y,force_z,"
-        << "reward,lost_reward,total_reward,total_lost_reward,"
-        << "max_force,max_time,trial_limit,stiffness,"
-        << "force_over_limit,max_time_reached,max_trial_reached\n";
+    log_file_ << "trial_idx,surface_id,active_region_x,active_region_y,multimodal,stiffness,max_time,max_trial,max_force,"
+              << "elap_time,scalpel_x,scalpel_y,scalpel_z,active_point_x,active_point_y,active_point_z,"
+              << "active_point_def_x,active_point_def_y,active_point_def_z,"
+              << "force_x,force_y,force_z,"
+              << "scalpel_vel_x,scalpel_vel_y,scalepl_vel_z\n";
+
+    response_file_  << "trial_idx,surface_id,active_region_x,active_region_y,multimodal,stiffness,max_time,max_trial,max_force,"
+                    << "elap_time,scalpel_x,scalpel_y,scalpel_z,active_point_x,active_point_y,active_point_z,"
+                    << "active_point_def_x,active_point_def_y,active_point_def_z,"
+                    << "force_x,force_y,force_z,"
+                    << "reward,lost_reward,total_reward,total_lost_reward,"
+                    << "force_over_limit,max_time_reached,max_trial_reached\n";
 
     //-----------------------------------------------------------------------
     // OPEN GL - WINDOW DISPLAY
@@ -424,7 +390,7 @@ int main(int argc, char* argv[])
     world->addChild(camera);
 
     // position and orient the camera
-    camera->set(cVector3d(r_camera*std::cos(camera_angle), 0.0, r_camera * std::sin(camera_angle)),    // camera position (eye)
+    camera->set(cVector3d(r_camera*std::cos(camera_angle_), 0.0, camera_radius_ * std::sin(camera_angle_)),    // camera position (eye)
                 cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
                 cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
 
@@ -456,34 +422,34 @@ int main(int argc, char* argv[])
     // define direction of light beam
     light->setDir(-10.0, 0.0, 0.0); 
 
-    scalpel = new cMultiMesh();
-    world->addChild(scalpel);
-    scalpel->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/scalpel.stl"));
-    scalpel->setUseMaterial(true);
-    scalpel->m_material->setGraySilver();
-    scalpel->m_material->setShininess(100);
-    scalpel->setLocalPos(0.0, 0.0, 0.0);
-    scalpel->setShowFrame(false);
-    scalpel->setUseCulling(true);
-    scalpel->computeBoundaryBox();
-    scalpel->setShowBoundaryBox(false);    
-    scalpel->setEnabled(false);
+    scalpel_ = new cMultiMesh();
+    world->addChild(scalpel_);
+    scalpel_->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/scalpel.stl"));
+    scalpel_->setUseMaterial(true);
+    scalpel_->m_material->setGraySilver();
+    scalpel_->m_material->setShininess(100);
+    scalpel_->setLocalPos(0.0, 0.0, 0.0);
+    scalpel_->setShowFrame(false);
+    scalpel_->setUseCulling(true);
+    scalpel_->computeBoundaryBox();
+    scalpel_->setShowBoundaryBox(false);    
+    scalpel_->setEnabled(false);
 
-    test_sphere = new cShapeSphere(kTestSphereRadius);
-    world->addChild(test_sphere);
-    test_sphere->m_material->setRedLightCoral();
-    test_sphere->m_material->setShininess(100);
-    test_sphere->setUseTransparency(true);
-    test_sphere->setTransparencyLevel(0.5);
-    test_sphere->setLocalPos(0.0, 0.0, 0.0);
-    test_sphere->setEnabled(false);
+    scalpel_hp_ = new cShapeSphere(kScalpelHPRadius_);
+    scalpel_->addChild(scalpel_hp_);
+    scalpel_hp_->m_material->setRedLightCoral();
+    scalpel_hp_->m_material->setShininess(100);
+    scalpel_hp_->setUseTransparency(true);
+    scalpel_hp_->setTransparencyLevel(0.5);
+    scalpel_hp_->setLocalPos(0.0, 0.0, 0.0);
+    scalpel_hp_->setEnabled(false);
 
-    active_point_sphere = new cShapeSphere(kActivePointRadius);
-    world->addChild(active_point_sphere);
-    active_point_sphere->m_material->setRedCrimson();
-    active_point_sphere->m_material->setShininess(100);
-    active_point_sphere->setLocalPos(0.0, 0.0, 0.0);
-    active_point_sphere->setEnabled(false);
+    active_point_ = new cShapeSphere(kActivePointRadius);
+    active_point_->m_material->setRedCrimson();
+    active_point_->m_material->setShininess(100);
+    active_point_->setLocalPos(0.0, 0.0, 0.0);
+    active_point_->setEnabled(false);
+
     //-----------------------------------------------------------------------
     // HAPTIC DEVICES / TOOLS
     //-----------------------------------------------------------------------
@@ -511,15 +477,13 @@ int main(int argc, char* argv[])
     // forces actually sent to the haptic device
     deviceForceScale = 5.0;
 
-    deviceRadius = 0.1;
-
     // create a large sphere that represents the haptic device
-    device_start_pos = new cShapeSphere(kStartPosRadius);
-    world->addChild(device_start_pos);
-    device_start_pos->m_material->setGreenDark();
-    device_start_pos->m_material->setShininess(100);
-    device_start_pos->setLocalPos(-0.5, 0.0, 0.5);
-    device_start_pos->setEnabled(false);
+    scalpel_start_pos_ = new cShapeSphere(kStartPosRadius);
+    world->addChild(scalpel_start_pos_);
+    scalpel_start_pos_->m_material->setGreenDark();
+    scalpel_start_pos_->m_material->setShininess(100);
+    scalpel_start_pos_->setLocalPos(-0.5, 0.0, 0.5);
+    scalpel_start_pos_->setEnabled(false);
 
     //-----------------------------------------------------------------------
     // COMPOSE THE VIRTUAL SCENE
@@ -530,7 +494,7 @@ int main(int argc, char* argv[])
     world->addChild(defWorld);
 
     // set default properties for skeleton nodes
-    cGELSkeletonNode::s_default_radius = kGEMSphereRadius;  // [m]
+    cGELSkeletonNode::s_default_radius = kGEMSphereRadius_;  // [m]
     cGELSkeletonNode::s_default_kDampingPos = 2.5;
     cGELSkeletonNode::s_default_kDampingRot = 0.6;
     cGELSkeletonNode::s_default_mass = 0.002; // [kg]
@@ -546,15 +510,16 @@ int main(int argc, char* argv[])
     cGELSkeletonLink::s_default_color.setBlueCornflower();
     
     // create a deformable mesh
-    for (std::int32_t i = 0; i < kNumSurf; ++i) {
-        defObject[i] = new cGELMesh();
-        defWorld->m_gelMeshes.push_front(defObject[i]);
-        defObject[i]->setLocalPos(0.0, 0.0, 0.0);
-        defObject[i]->setEnabled(false, true);//affect children
+    for (std::int32_t i = 0; i < kNumSurf_; ++i) {
+        def_surf_[i] = new cGELMesh();
+        def_surf[i]->addChild(active_point_);
+        defWorld->m_gelMeshes.push_front(def_surf_[i]);
+        def_surf_[i]->setLocalPos(0.0, 0.0, 0.0);
+        def_surf_[i]->setEnabled(false, true);//affect children
 
         // load model
         bool fileload;
-        fileload = defObject[i]->loadFromFile(RESOURCE_PATH("../resources/models/box/box.obj"));
+        fileload = def_surf_[i]->loadFromFile(RESOURCE_PATH("../resources/models/box/box.obj"));
         if (!fileload) {
             cout << "Error - 3D Model failed to load correctly." << endl;
             close();
@@ -565,7 +530,7 @@ int main(int argc, char* argv[])
         cMaterial mat;
         mat.setWhite();
         mat.setShininess(100);
-        defObject[i]->setMaterial(mat, true);
+        def_surf_[i]->setMaterial(mat, true);
 
         // let's create a some environment mapping
         shared_ptr<cTexture2d> texture(new cTexture2d());
@@ -582,54 +547,56 @@ int main(int argc, char* argv[])
         texture->setEnvironmentMode(GL_DECAL);
         texture->setSphericalMappingEnabled(true);
 
-        defObject[i]->setTexture(texture, true);
-        defObject[i]->setUseTexture(true, true);
+        def_surf_[i]->setTexture(texture, true);
+        def_surf_[i]->setUseTexture(true, true);
         // set object to be transparent
-        defObject[i]->setTransparencyLevel(0.65, true, true);
+        def_surf_[i]->setTransparencyLevel(0.65, true, true);
         // build dynamic vertices
-        defObject[i]->buildVertices();
+        def_surf_[i]->buildVertices();
         // use internal skeleton as deformable model
-        defObject[i]->m_useSkeletonModel = true;
+        def_surf_[i]->m_useSkeletonModel = true;
 
         // create an array of nodes
-        for (int z = 0; z < kNumNodeZ; z++) {
-            for (int y = 0; y < kNumNodeY; y++) {
-                for (int x = 0; x < kNumNodeX; x++) {
+        for (int z = 0; z < kNumNodeZ_; z++) {
+            for (int y = 0; y < kNumNodeY_; y++) {
+                for (int x = 0; x < kNumNodeX_; x++) {
                     cGELSkeletonNode* newNode = new cGELSkeletonNode();
                     nodes[i][x][y][z] = newNode;
-                    defObject[i]->m_nodes.push_front(newNode);
-                    newNode->m_pos.set((-kGEMSide + 2.0 * kGEMSphereRadius * (double)x), (-kGEMSide + 2.0 * kGEMSphereRadius * (double)y), (2.0 * kGEMSphereRadius * (double)z));
-                    newNode->m_kDampingPos = 0.1 * 0.25 * stiffness[i];
+                    def_surf_[i]->m_nodes.push_front(newNode);
+                    newNode->m_pos.set( -kGEMSphereRadius_ * kNumNodeX_ + 2.0 * kGEMSphereRadius_ * (double)x,
+                                        -kGEMSphereRadius_ * kNumNodeY_ + 2.0 * kGEMSphereRadius_ * (double)y,
+                                        2.0 * kGEMSphereRadius_ * (double)z);
+                    newNode->m_kDampingPos = 0.1 * 0.25 * stiffness_[i];
                     // set corner nodes as fixed
-                    if ((x == 0 && y == kNumNodeY - 1) || 
-                        (x == kNumNodeX - 1 && y == 0) || 
-                        (x == kNumNodeX - 1 && y == kNumNodeY - 1) || 
+                    if ((x == 0 && y == kNumNodeY_ - 1) || 
+                        (x == kNumNodeX_ - 1 && y == 0) || 
+                        (x == kNumNodeX_ - 1 && y == kNumNodeY_ - 1) || 
                         (x == 0 && y == 0)) newNode->m_fixed = true;
                 }
             }
         }
            
         // create links between nodes
-        for (int z = 0; z < kNumNodeZ; z++) {
-            for (int y = 0; y < kNumNodeY-1; y++) {
-                for (int x = 0; x < kNumNodeX-1; x++) {
-                    cGELSkeletonLink::s_default_kSpringElongation = 0.25 * stiffness[i];
+        for (int z = 0; z < kNumNodeZ_; z++) {
+            for (int y = 0; y < kNumNodeY_ - 1; y++) {
+                for (int x = 0; x < kNumNodeX_ - 1; x++) {
+                    cGELSkeletonLink::s_default_kSpringElongation = 0.25 * stiffness_[i];
                     cGELSkeletonLink* newLinkX0 = new cGELSkeletonLink(nodes[i][x + 0][y + 0][z], nodes[i][x + 1][y + 0][z]);
                     cGELSkeletonLink* newLinkX1 = new cGELSkeletonLink(nodes[i][x + 0][y + 1][z], nodes[i][x + 1][y + 1][z]);
                     cGELSkeletonLink* newLinkY0 = new cGELSkeletonLink(nodes[i][x + 0][y + 0][z], nodes[i][x + 0][y + 1][z]);
                     cGELSkeletonLink* newLinkY1 = new cGELSkeletonLink(nodes[i][x + 1][y + 0][z], nodes[i][x + 1][y + 1][z]);
-                    defObject[i]->m_links.push_front(newLinkX0);
-                    defObject[i]->m_links.push_front(newLinkX1);
-                    defObject[i]->m_links.push_front(newLinkY0);
-                    defObject[i]->m_links.push_front(newLinkY1);
+                    def_surf_[i]->m_links.push_front(newLinkX0);
+                    def_surf_[i]->m_links.push_front(newLinkX1);
+                    def_surf_[i]->m_links.push_front(newLinkY0);
+                    def_surf_[i]->m_links.push_front(newLinkY1);
                 }
             }
         }
         //
-        defObject[i]->scaleXYZ(2.0 * kGEMSide, 2.0 * kGEMSide, 1.0);
-        defObject[i]->connectVerticesToSkeleton(false);
-        defObject[i]->m_showSkeletonModel = false;
-        defObject[i]->setEnabled(false, true);
+        def_surf_[i]->scaleXYZ(2.0 * kGEMSphereRadius_ * kNumNodeX_, 2.0 * kGEMSphereRadius_ * kNumNodeY_, 1.0);
+        def_surf_[i]->connectVerticesToSkeleton(false);
+        def_surf_[i]->m_showSkeletonModel = false;
+        def_surf_[i]->setEnabled(false, true);
     }
 
     //--------------------------------------------------------------------------
@@ -639,7 +606,6 @@ int main(int argc, char* argv[])
     // create a font
     cFontPtr font = NEW_CFONTCALIBRI20();
     cFontPtr font_inst = NEW_CFONTCALIBRI40();
-    cFontPtr font_time = NEW_CFONTCALIBRI72();
 
     // create a label to display the haptic and graphic rate of the simulation
     labelRates = new cLabel(font);
@@ -647,60 +613,30 @@ int main(int argc, char* argv[])
     labelRates->m_fontColor.setBlack();
     labelRates->setEnabled(false);
 
-    labelTime = new cLabel(font_time);
-    camera->m_frontLayer->addChild(labelTime);
-    labelTime->m_fontColor.setBlack();
-    labelTime->setEnabled(false);
+    for (std::int32_t i = 0; i < kNumInst_; ++i) {
+      label_inst_[i] = new cLabel(font_inst);
+      camera->m_frontLayer->addChild(label_inst_[i]);
+      label_inst_[i]->m_fontColor.setBlack();
+      label_inst_[i]->setColor(cColorf(0.0, 0.0, 0.0));
+      label_inst_[i]->setEnabled(false);
+    }
     
-    labelInst = new cLabel(font_inst);
-    camera->m_frontLayer->addChild(labelInst);
-    labelInst->m_fontColor.setBlack();
-    labelInst->setColor(cColorf(0.0, 0.0, 0.0));
     std::string testo_inst = "Questo test ha lo scopo di misurare le sue capacita' di usare indizi visivi e / o tattili.\n\n";
     testo_inst += "Le verra' chiesto di deformare una serie di lastre virtuali che si susseguono. La deformazione puo' essere ottenuta tramite\nun bisturi controllato attraverso il dispositivo (braccio robotico) posto di fronte a lei. Questo dispositivo puo' erogare o meno\nun feedback tattile, ovvero una forza che si oppone al movimento di deformazione della lastra.\n\n";
     testo_inst += "Col bisturi deve imprimere una pressione sulla lastra per deformarla e piu' riuscira' a deformarla senza perforarla maggiore\nsara' la ricompensa (monete verdi). Qualora la lastra venisse perforata, le verra' conteggiata una perdita (monete rosse).\n\n";
     testo_inst += "Le varie lastre hanno un punto di rottura diverso, percio' dovra' porre attenzione a quanta pressione esercitera' sulla lastra stessa.\n\n";
     testo_inst += "Il suo compito e' quello di guadagnare piu' monete verdi possibili e minimizzare quello delle monete rosse.\n\n";
     testo_inst += "Prema un tasto per andare avanti";
-    labelInst->setText(testo_inst);
-    labelInst->setEnabled(false);
+    
+    label_inst_[0]->setText(testo_inst);
 
-    labelInstSecond = new cLabel(font_inst);
-    camera->m_frontLayer->addChild(labelInstSecond);
-    labelInstSecond->m_fontColor.setBlack();
-    labelInstSecond->setColor(cColorf(0.0, 0.0, 0.0));
     testo_inst = "Per iniziare la singola prova deve toccare la sfera verde con il bisturi, portarlo sulla lastra\nnel punto indicato dalla sfera ed iniziare a premere sulla lastra.\n\n";
     testo_inst += "Una volta ritenuto di aver raggiunto il massimo grado di deformazione, prema un tasto sul braccio robotico.\n";
     testo_inst += "Se invece lei oltrepassa il punto di rottura della lastra o se impiega piu' di 10 secondi per deformare la lastra\nsenza premere uno dei tasti, la singola prova sara' considerata fallita e verranno assegnate le monete rosse.\n\n";
     testo_inst += "Superata la soglia di 10 errori, il suo guadagno cumulato sara' totalmente perso, e dovra' ricominciare a guadagnare le monete verdi.\n\n";
     testo_inst += "Prema un tasto per cominciare";
 
-    labelInstSecond->setText(testo_inst);
-    labelInstSecond->setEnabled(true);
-
-    for (std::int32_t i = 0; i < kNumCoins; ++i) {
-        cBitmap* tmp_coin = new cBitmap();
-        camera->m_frontLayer->addChild(tmp_coin);
-        tmp_coin->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/coin_green.png"));
-        w_coin = tmp_coin->m_texture->m_image->getWidth();
-        h_coin = tmp_coin->m_texture->m_image->getHeight();
-        tmp_coin->setSize(0.5 * w_coin, 0.5 * h_coin);
-        tmp_coin->setLocalPos(0.0, 0.0);
-        tmp_coin->setEnabled(false);
-        coins_green[i] = tmp_coin;
-    }
-
-    for (std::int32_t i = 0; i < kNumCoins; ++i) {
-        cBitmap* tmp_coin = new cBitmap();
-        camera->m_frontLayer->addChild(tmp_coin);
-        tmp_coin->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/red_coin.png"));
-        w_coin = tmp_coin->m_texture->m_image->getWidth();
-        h_coin = tmp_coin->m_texture->m_image->getHeight();
-        tmp_coin->setSize(0.5 * w_coin, 0.5 * h_coin);
-        tmp_coin->setLocalPos(0.0, 0.0);
-        tmp_coin->setEnabled(false);
-        coins_red[i] = tmp_coin;
-    }
+    label_inst_[1]->setText(testo_inst);
     
     // create a background
     cBackground* background = new cBackground();
@@ -827,31 +763,18 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
         return;
     } else if ((a_key == GLFW_KEY_ESCAPE) || (a_key == GLFW_KEY_Q)) {// option - exit
         glfwSetWindowShouldClose(a_window, GLFW_TRUE);
-    } else if (a_key == GLFW_KEY_S) {// option - show/hide skeleton
-        if (active_surface != -1)
-            defObject[active_surface]->m_showSkeletonModel = !defObject[active_surface]->m_showSkeletonModel;
-    }
-
-    // option - toggle fullscreen
-    else if (a_key == GLFW_KEY_F)
-    {
+    } else if (a_key == GLFW_KEY_F) {
         // toggle state variable
         fullscreen = !fullscreen;
-
         // get handle to monitor
         GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-
         // get information about monitor
         const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-
         // set fullscreen or window mode
-        if (fullscreen)
-        {
+        if (fullscreen) {
             glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
             glfwSwapInterval(swapInterval);
-        }
-        else
-        {
+        } else {
             int w = 0.8 * mode->height;
             int h = 0.5 * mode->height;
             int x = 0.5 * (mode->width - w);
@@ -859,53 +782,37 @@ void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, 
             glfwSetWindowMonitor(window, NULL, x, y, w, h, mode->refreshRate);
             glfwSwapInterval(swapInterval);
         }
-    }
-
-    // option - toggle vertical mirroring
-    else if (a_key == GLFW_KEY_M)
-    {
-        mirroredDisplay = !mirroredDisplay;
-        camera->setMirrorVertical(mirroredDisplay);
-    }
-    else if (a_key == GLFW_KEY_KP_ADD) {
-        camera_angle += 0.05;
-        double x_pos = r_camera * std::cos(camera_angle);
-        double z_pos = r_camera * std::sin(camera_angle);
+    } else if (a_key == GLFW_KEY_KP_ADD) {
+        camera_angle_ += 0.05;
+        double x_pos = camera_radius_ * std::cos(camera_angle_);
+        double z_pos = camera_radius_ * std::sin(camera_angle_);
         camera->set(cVector3d(x_pos, 0.0, z_pos),    // camera position (eye)
                     cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
                     cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
-
-        std::cout << "Camera position: " << x_pos << ",0.0," << z_pos << "\n";
     }
     else if (a_key == GLFW_KEY_KP_SUBTRACT) {
-        camera_angle -= 0.05;
-        double x_pos = r_camera * std::cos(camera_angle);
-        double z_pos = r_camera * std::sin(camera_angle);
+        camera_angle_ -= 0.05;
+        double x_pos = camera_radius_ * std::cos(camera_angle_);
+        double z_pos = camera_radius_ * std::sin(camera_angle_);
         camera->set(cVector3d(x_pos, 0.0, z_pos),    // camera position (eye)
-            cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
-            cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
-
-        std::cout << "Camera position: " << x_pos << ",0.0," << z_pos << "\n";
+                    cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
+                    cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
     }
     else if (a_key == GLFW_KEY_KP_MULTIPLY) {
-        r_camera += 0.25;
-        double x_pos = r_camera * std::cos(camera_angle);
-        double z_pos = r_camera * std::sin(camera_angle);
+        camera_radius_ += 0.25;
+        double x_pos = camera_radius_ * std::cos(camera_angle_);
+        double z_pos = camera_radius_ * std::sin(camera_angle_);
         camera->set(cVector3d(x_pos, 0.0, z_pos),    // camera position (eye)
-            cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
-            cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
-
-        std::cout << "Camera position: " << x_pos << ",0.0," << z_pos << "\n";
+                    cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
+                    cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
     }
     else if (a_key == GLFW_KEY_KP_DIVIDE) {
-        r_camera -= 0.25;
-        double x_pos = r_camera * std::cos(camera_angle);
-        double z_pos = r_camera * std::sin(camera_angle);
+        camera_radius_ -= 0.25;
+        double x_pos = camera_radius_ * std::cos(camera_angle_);
+        double z_pos = camera_radius_ * std::sin(camera_angle_);
         camera->set(cVector3d(x_pos, 0.0, z_pos),    // camera position (eye)
-            cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
-            cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
-
-        std::cout << "Camera position: " << x_pos << ",0.0," << z_pos << "\n";
+                    cVector3d(0.0, 0.0, 0.0),    // lookat position (target)
+                    cVector3d(0.0, 0.0, 1.0));   // direction of the (up) vector
     }
 }
 
@@ -922,8 +829,8 @@ void close(void)
     // close haptic device
     hapticDevice->close();
 
-    log_file.close();
-    response_file.close();
+    log_file_.close();
+    response_file_.close();
 
     // delete resources
     delete hapticsThread;
@@ -943,28 +850,19 @@ void updateGraphics(void)
     labelRates->setText(cStr(freqCounterGraphics.getFrequency(), 0) + " Hz / " +
         cStr(freqCounterHaptics.getFrequency(), 0) + " Hz");
 
-    if (trial_started) labelTime->setText(cStr(max_time - exec_time.getCurrentTimeSeconds(), 0) + "s");
-    else labelTime->setText("--- s");
-
     // update position of label
     labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
 
-    labelTime->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), height - 3 * labelRates->getHeight());
-
-    labelInst->setLocalPos((width - labelInst->getWidth()) / 2.0, (height - labelInst->getHeight()) / 2.0);
-    labelInstSecond->setLocalPos((width - labelInstSecond->getWidth()) / 2.0, (height - labelInstSecond->getHeight()) / 2.0);
-
-    for (std::int32_t i = 0; i < kNumCoins; ++i) {
-        w_coin = coins_green[i]->getWidth();
-        h_coin = coins_green[i]->getHeight();
-        coins_green[i]->setLocalPos(width - 1.1 * w_coin, h_coin * 0.1 * (i + 1));
+    if (show_first_inst_ || show_second_inst_) {
+      for (std::int32_t i = 0; i < kNumInst_; ++i) {
+        label_inst_[i]->setLocalPos((width - label_inst_[i]->getWidth()) / 2.0, (height - label_inst_[i]->getHeight()) / 2.0);
+      }
     }
-    
-    for (std::int32_t i = 0; i < kNumCoins; ++i) {
-        w_coin = coins_red[i]->getWidth();
-        h_coin = coins_red[i]->getHeight();
-        coins_red[i]->setLocalPos(0.1 * w_coin, h_coin * 0.1 * (i + 1));
-    }
+
+    double w_coin = coin_green_->getWidth();
+    double h_coin = coin_green_->getHeight();
+    coin_green->setLocalPos(width - 1.1 * w_coin, 0.1 * h_coin);
+    coin_red->setLocalPos(0.1 * w_coin, 0.1 * h_coin);
 
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
@@ -1089,7 +987,7 @@ void updateHaptics(void)
             if (device_start_pos->getLocalPos().distance(test_sphere_pos) <= kStartPosRadius) {
                 device_start_pos->setEnabled(false, true);
                 active_point_sphere->setEnabled(true);
-                defObject[active_surface]->setEnabled(true, true);
+                def_surf_[active_surface]->setEnabled(true, true);
                 pre_trial_phase = true;
                 force_over_limit = false;
                 max_time_reached = false;
@@ -1155,7 +1053,7 @@ void updateHaptics(void)
             cMaterial mat;
             mat.setRedCrimson();
             mat.setShininess(100);
-            defObject[active_surface]->setMaterial(mat, true);
+            def_surf_[active_surface]->setMaterial(mat, true);
             force_over_limit = true;
             user_switches = 1;
             std::cout << "FORCE OVER LIMIT\n";
@@ -1173,8 +1071,8 @@ void updateHaptics(void)
             mat.setWhite();
             mat.setShininess(100);
             /****/
-            defObject[active_surface]->setEnabled(false, true);
-            defObject[active_surface]->setMaterial(mat, true);
+            def_surf_[active_surface]->setEnabled(false, true);
+            def_surf_[active_surface]->setMaterial(mat, true);
             /****/
             if (!force_over_limit && !max_time_reached) {
                 reward = fabs(pos.z());
