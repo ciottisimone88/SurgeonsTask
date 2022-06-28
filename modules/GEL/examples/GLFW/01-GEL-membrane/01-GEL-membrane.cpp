@@ -984,12 +984,12 @@ void updateHaptics(void)
     scalpel_hp_->setLocalPos(scalpel_hp_pos);
 
     if (!trial_started_) {
-      if (scalpel_start_pos_->getEnable() && scalpel_start_pos_->getLocalPos().distance(scalpel_hp_->getGlobalPos()) <= kScalpelStartPosRadius_) {
+      if (scalpel_start_pos_->getEnabled() && scalpel_start_pos_->getLocalPos().distance(scalpel_hp_->getGlobalPos()) <= kScalpelStartPosRadius_) {
         scalpel_start_pos_->setEnabled(false);
         def_surf_[active_surface_]->setEnabled(true);
         active_point_->setEnabled(true);
       } 
-      if (!scalpel_start_pos_->getEnable() && scalpel_start_pos_->getLocalPos().distance(scalpel_hp_->getGlobalPos()) > 4.0 * kScalpelStartPosRadius_) {
+      if (!scalpel_start_pos_->getEnabled() && scalpel_start_pos_->getLocalPos().distance(scalpel_hp_->getGlobalPos()) > 4.0 * kScalpelStartPosRadius_) {
         active_point_->setEnabled(false);
         trial_started_ = true;
         force_over_limit_ = false;
@@ -1021,7 +1021,7 @@ void updateHaptics(void)
     }
 
     // integrate dynamics
-    defWorld->updateDynamics(time);
+    defWorld->updateDynamics(time_clock);
 
     // scale force
     force.mul(deviceForceScale / workspaceScaleFactor);
@@ -1043,13 +1043,13 @@ void updateHaptics(void)
       def_surf_[active_surface_]->setEnabled(false);
       /****/
       if (!force_over_limit_ && !max_time_reached_) {
-        reward_ = fabs(pos.z()); // TO DO
+        //reward_ = fabs(pos.z()); // TO DO
         lost_reward_ = 0.0;
         // TO DO: display reward
       } else {
-        lost_trial++;
+        lost_trial_++;
         reward_ = 0;
-        lost_reward_ = fabs(pos.z());// TO DO
+        //lost_reward_ = fabs(pos.z());// TO DO
         // TO DO: display lost reward
       }
       /****/
@@ -1113,7 +1113,7 @@ void updateHaptics(void)
       //             << force.z() << "\n";
       //     }
       // //}
-
+      }
       /****/
       if (multimodal_feedback_ == 0 || !trial_started_) force.zero();
       /****/
