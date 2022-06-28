@@ -753,6 +753,7 @@ void mouseButtonCallback(GLFWwindow* a_window, int a_button, int a_action, int a
                 break;
             case 1:
                 label_inst_[show_inst_cnt_]->setEnabled(false);
+                scalpel_start_pos_->setEnabled(true);
                 show_inst_cnt_++;
                 break;
             default: break;
@@ -846,9 +847,6 @@ void close(void)
     // close haptic device
     hapticDevice->close();
 
-    log_file_.close();
-    response_file_.close();
-
     // delete resources
     delete hapticsThread;
     delete world;
@@ -919,12 +917,16 @@ void updateHaptics(void)
 
   cVector3d scalpel_hp_pos;
   cVector3d scalpel_bb_min;
+
+  cVector3d active_point_pos;
   
   cVector3d force;
 
   cVector3d node_pose;
   cVector3d computed_force;
   cVector3d node_force;
+
+  cVector3d active_point_def;
 
   // initialize precision clock
   cPrecisionClock clock;
@@ -936,15 +938,21 @@ void updateHaptics(void)
   simulationRunning  = true;
   simulationFinished = false;
 
-  force_over_limit_   = false;
-  max_trial_reached_  = false;
-  max_time_reached_   = false;
-  trial_started_      = false;
-  tot_reward_         = 0.0;
-  reward_             = 0.0;
-  tot_lost_reward_    = 0.0;
-  lost_reward_        = 0.0;
-  lost_trial_         = 0;
+  force_over_limit_     = false;
+  max_trial_reached_    = false;
+  max_time_reached_     = false;
+  trial_started_        = false;
+  tot_reward_           = 0.0;
+  reward_               = 0.0;
+  tot_lost_reward_      = 0.0;
+  lost_reward_          = 0.0;
+  lost_trial_           = 0;
+  trial_idx_            = 0;
+  active_surface_       = stimuli_[trial_idx_][0] - 1;
+  active_point_x_       = stimuli_[trial_idx_][1];
+  active_point_y_       = stimuli_[trial_idx_][2];
+  multimodal_feedback_  = stimuli_[trial_idx_][3];
+  active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
     
   // main haptic simulation loop
   while(simulationRunning) {   
@@ -1007,7 +1015,10 @@ void updateHaptics(void)
       freqCounterHaptics.signal(1);
       continue;
     }
-      
+    
+    // clear all external forces
+    defWorld->clearExternalForces();
+
     for (std::int32_t z = 0; z < kNumNodeZ_; z++) {
       for (std::int32_t y = 0; y < kNumNodeY_; y++) {
         for (std::int32_t x = 0; x < kNumNodeX_; x++) {
@@ -1022,7 +1033,6 @@ void updateHaptics(void)
 
     // integrate dynamics
     defWorld->updateDynamics(time_clock);
-
     // scale force
     force.mul(deviceForceScale / workspaceScaleFactor);
     
@@ -1064,65 +1074,76 @@ void updateHaptics(void)
         tot_lost_reward_ += lost_reward_;
         max_trial_reached_ = false;
       }
-
-      //     response_file << trial_idx << ","
-      //         << active_surface << ","
-      //         << active_point_x << ","
-      //         << active_point_y << ","
-      //         << multimodal_feedback << ","
-      //         << exec_time.stop() << ","
-      //         << force.x() << ","
-      //         << force.y() << ","
-      //         << force.z() << ","
-      //         << reward << ","
-      //         << lost_reward << ","
-      //         << tot_reward << ","
-      //         << tot_lost_reward << ","
-      //         << max_force[active_surface] << ","
-      //         << max_time << ","
-      //         << trial_limit << ","
-      //         << stiffness[active_surface] << ","
-      //         << force_over_limit << ","
-      //         << max_time_reached << ","
-      //         << max_trial_reached << "\n";
-
-      //     std::cout << "Total Reward: " << tot_reward << "\n"
-      //               << "Total LOST Reward: " << tot_lost_reward << "\n";
-      //     trial_started = false;
-      //     //iti = true;
-      //     //iti_timer.start(true);
-      //     device_start_pos->setEnabled(true, true);
-      //     next_trial = true;
-      // }
-      
-      // /*if (iti && iti_timer.getCurrentTimeSeconds() > kITI) {
-      //     device_start_pos->setEnabled(true, true);
-      //     next_trial = true;
-      //     iti = false;
-      //     iti_timer.stop();
-      // } else {*/
-      //     if (trial_started) {
-      //         log_file << trial_idx << ","
-      //             << active_surface << ","
-      //             << active_point_x << ","
-      //             << active_point_y << ","
-      //             << multimodal_feedback << ","
-      //             << exec_time.getCurrentTimeSeconds() << ","
-      //             << force.x() << ","
-      //             << force.y() << ","
-      //             << force.z() << "\n";
-      //     }
-      // //}
+      /***/
+      scalpel_hp_pos = scalpel_hp_->getGlobalPos();
+      active_point_pos = active_point_->getGlobalPos();
+      /***/
+      response_file_  << trial_idx_                           << ","
+                      << active_surface_                      << ","
+                      << active_point_x_                      << ","
+                      << active_point_y_                      << ","
+                      << multimodal_feedback_                 << ","
+                      << stiffness_[active_surface_]          << ","
+                      << max_time_                            << ","
+                      << trial_limit_                         << ","
+                      << max_force_[active_surface_]          << ","
+                      << exec_timer_.getCurrentTimeSeconds()  << ","
+                      << scalpel_hp_pos.x()                   << ","
+                      << scalpel_hp_pos.y()                   << ","
+                      << scalpel_hp_pos.z()                   << ","
+                      << active_point_pos.x()                 << ","
+                      << active_point_pos.y()                 << ","
+                      << active_point_pos.z()                 << ","
+                      << active_point_def.x()                 << ","
+                      << active_point_def.y()                 << ","
+                      << active_point_def.z()                 << ","
+                      << force.x()                            << ","
+                      << force.y()                            << ","
+                      << force.z()                            << ","
+                      << reward_                              << ","
+                      << lost_reward_                         << ","
+                      << tot_reward_                          << ","
+                      << tot_lost_reward_                     << ","
+                      << force_over_limit_                    << ","
+                      << max_time_reached_                    << ","
+                      << max_trial_reached_                   << "\n";
+      /****/
+      trial_started_ = false;
+      /***/
+      trial_idx_++;
+      if (trial_idx_ < stimuli_.size()) {
+        active_surface_      = stimuli_[trial_idx_][0] - 1;
+        active_point_x_      = stimuli[trial_idx_][1];
+        active_point_y_      = stimuli[trial_idx_][2];
+        multimodal_feedback_ = stimuli[trial_idx_][3];
+        active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
+        scalpel_start_pos_->setEnabled(true);
+      } else {
+        simulationRunning = false;
       }
-      /****/
-      if (multimodal_feedback_ == 0 || !trial_started_) force.zero();
-      /****/
-      hapticDevice->setForce(force);
-
-      // signal frequency counter
-      freqCounterHaptics.signal(1);
+    }
+    /****/
+    if (trial_started) {
+      log_file  << trial_idx << ","
+                << active_surface << ","
+                << active_point_x << ","
+                << active_point_y << ","
+                << multimodal_feedback << ","
+                << exec_time.getCurrentTimeSeconds() << ","
+                << force.x() << ","
+                << force.y() << ","
+                << force.z() << "\n";
+    }
+    /****/
+    if (multimodal_feedback_ == 0 || !trial_started_) force.zero();
+    /****/
+    hapticDevice->setForce(force);
+    // signal frequency counter
+    freqCounterHaptics.signal(1);
   }
-
+  ////
+  log_file_.close();
+  response_file_.close();
   // exit haptics thread
   simulationFinished = true;
 }
