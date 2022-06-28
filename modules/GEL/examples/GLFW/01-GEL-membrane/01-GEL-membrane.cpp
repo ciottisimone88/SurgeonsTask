@@ -187,6 +187,8 @@ double camera_radius_{ 2.0 };
 double camera_angle_{ 0.785/2.0 };
 cBitmap* coin_green_;
 cBitmap* coin_red_;
+cLabel* label_reward_;
+cLabel* label_lost_reward_;
 
 //---------------------------------------------------------------------------
 // GEL
@@ -459,14 +461,14 @@ int main(int argc, char* argv[])
     coin_green_ = new cBitmap();
     camera->m_frontLayer->addChild(coin_green_);
     coin_green_->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/coin_green.png"));
-    coin_green_->setSize(0.5 * coin_green_->m_texture->m_image->getWidth(), 0.5 * coin_green_->m_texture->m_image->getHeight());
+    coin_green_->setSize(0.8 * coin_green_->m_texture->m_image->getWidth(), 0.8 * coin_green_->m_texture->m_image->getHeight());
     coin_green_->setLocalPos(0.0, 0.0);
     coin_green_->setEnabled(false);
 
     coin_red_ = new cBitmap();
     camera->m_frontLayer->addChild(coin_red_);
     coin_red_->loadFromFile(RESOURCE_PATH("../resources/surgeons_task/red_coin.png"));
-    coin_red_->setSize(0.5 * coin_red_->m_texture->m_image->getWidth(), 0.5 * coin_red_->m_texture->m_image->getHeight());
+    coin_red_->setSize(0.8 * coin_red_->m_texture->m_image->getWidth(), 0.8 * coin_red_->m_texture->m_image->getHeight());
     coin_red_->setLocalPos(0.0, 0.0);
     coin_red_->setEnabled(false);
 
@@ -502,7 +504,7 @@ int main(int argc, char* argv[])
     world->addChild(scalpel_start_pos_);
     scalpel_start_pos_->m_material->setGreenDark();
     scalpel_start_pos_->m_material->setShininess(100);
-    scalpel_start_pos_->setLocalPos(-0.5, 0.0, 0.5);
+    scalpel_start_pos_->setLocalPos(0.0, 0.0, 0.5);
     scalpel_start_pos_->setEnabled(false);
 
     //-----------------------------------------------------------------------
@@ -567,10 +569,10 @@ int main(int argc, char* argv[])
         texture->setEnvironmentMode(GL_DECAL);
         texture->setSphericalMappingEnabled(true);
 
-        def_surf_[i]->setTexture(texture, true);
-        def_surf_[i]->setUseTexture(true, true);
+        def_surf_[i]->setTexture(texture);
+        def_surf_[i]->setUseTexture(true, false);
         // set object to be transparent
-        def_surf_[i]->setTransparencyLevel(0.65, true, true);
+        def_surf_[i]->setTransparencyLevel(0.65, true);
         // build dynamic vertices
         def_surf_[i]->buildVertices();
         // use internal skeleton as deformable model
@@ -626,6 +628,7 @@ int main(int argc, char* argv[])
     // create a font
     cFontPtr font = NEW_CFONTCALIBRI20();
     cFontPtr font_inst = NEW_CFONTCALIBRI40();
+    cFontPtr font_reward = NEW_CFONTCALIBRI72();
 
     // create a label to display the haptic and graphic rate of the simulation
     labelRates = new cLabel(font);
@@ -659,6 +662,21 @@ int main(int argc, char* argv[])
 
     label_inst_[1]->setText(testo_inst);
     
+    /****/
+    label_reward_ = new cLabel(font_reward);
+    camera->m_frontLayer->addChild(label_reward_);
+    label_reward_->m_fontColor.setBlack();
+    label_reward_->setColor(cColorf(0.0, 0.0, 0.0));
+    label_reward_->setEnabled(false);
+    label_reward_->setText("0.0");
+    /****/
+    label_lost_reward_ = new cLabel(font_reward);
+    camera->m_frontLayer->addChild(label_lost_reward_);
+    label_lost_reward_->m_fontColor.setBlack();
+    label_lost_reward_->setColor(cColorf(0.0, 0.0, 0.0));
+    label_lost_reward_->setEnabled(false);
+    label_lost_reward_->setText("0.0");
+
     // create a background
     cBackground* background = new cBackground();
     camera->m_backLayer->addChild(background);
@@ -754,6 +772,11 @@ void mouseButtonCallback(GLFWwindow* a_window, int a_button, int a_action, int a
             case 1:
                 label_inst_[show_inst_cnt_]->setEnabled(false);
                 scalpel_start_pos_->setEnabled(true);
+                scalpel_->setEnabled(true);
+                coin_green_->setEnabled(true);
+                coin_red_->setEnabled(true);
+                label_reward_->setEnabled(true);
+                label_lost_reward_->setEnabled(true);
                 show_inst_cnt_++;
                 break;
             default: break;
@@ -879,6 +902,12 @@ void updateGraphics(void)
     coin_green_->setLocalPos(width - 1.1 * w_coin, 0.1 * h_coin);
     coin_red_->setLocalPos(0.1 * w_coin, 0.1 * h_coin);
 
+    label_reward_->setText(std::to_string(tot_reward_));
+    label_lost_reward_->setText(std::to_string(tot_lost_reward_));
+
+    label_reward_->setLocalPos(width - 1.35 * w_coin - 1.1 * label_reward_->getWidth(), 0.8 * h_coin / 2.0);
+    label_lost_reward_->setLocalPos(0.9 * w_coin + 1.1 * label_lost_reward_->getWidth(), 0.8 * h_coin / 2.0);
+
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
     /////////////////////////////////////////////////////////////////////
@@ -919,6 +948,7 @@ void updateHaptics(void)
   cVector3d scalpel_bb_min;
 
   cVector3d active_point_pos;
+  cVector3d active_point_start_pos;
   
   cVector3d force;
 
@@ -927,6 +957,10 @@ void updateHaptics(void)
   cVector3d node_force;
 
   cVector3d active_point_def;
+
+  std::int32_t node_coord_x;
+  std::int32_t node_coord_y;
+  std::int32_t node_coord_z{ 0 };
 
   // initialize precision clock
   cPrecisionClock clock;
@@ -953,7 +987,38 @@ void updateHaptics(void)
   active_point_y_       = stimuli_[trial_idx_][2];
   multimodal_feedback_  = stimuli_[trial_idx_][3];
   active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
-    
+  active_point_->computeGlobalPositionsFromRoot();
+  //active_point_start_pos = active_point_->getGlobalPos();
+  switch (active_point_x_) {
+      case -1:
+          node_coord_x = 2;
+          break;
+      case 0:
+          node_coord_x = 6;
+          break;
+      case 1:
+          node_coord_x = 10;
+          break;
+      default: break;
+  }
+  /***/
+  switch (active_point_y_) {
+      case -1:
+          node_coord_y = 2;
+          break;
+      case 0:
+          node_coord_y = 6;
+          break;
+      case 1:
+          node_coord_y = 10;
+          break;
+      default: break;
+  }
+  /***/
+  node_coord_z = 0;
+  /***/
+  active_point_start_pos = nodes[active_surface_][node_coord_x][node_coord_y][node_coord_z]->m_pos;
+
   // main haptic simulation loop
   while(simulationRunning) {   
     // stop clock
@@ -990,8 +1055,12 @@ void updateHaptics(void)
 
     scalpel_hp_pos = scalpel_bb_min;
     scalpel_hp_->setLocalPos(scalpel_hp_pos);
+    scalpel_hp_->computeGlobalPositionsFromRoot();
+
+    active_point_->computeGlobalPositionsFromRoot();
 
     if (!trial_started_) {
+      /***/
       if (scalpel_start_pos_->getEnabled() && scalpel_start_pos_->getLocalPos().distance(scalpel_hp_->getGlobalPos()) <= kScalpelStartPosRadius_) {
         scalpel_start_pos_->setEnabled(false);
         def_surf_[active_surface_]->setEnabled(true);
@@ -1023,7 +1092,7 @@ void updateHaptics(void)
       for (std::int32_t y = 0; y < kNumNodeY_; y++) {
         for (std::int32_t x = 0; x < kNumNodeX_; x++) {
           node_pose = nodes[active_surface_][x][y][z]->m_pos;
-          computed_force = computeForce(scalpel_hp_->getGlobalPos(), kScalpelHPRadius_, node_pose, kGEMSphereRadius_, stiffness_[active_surface_], haptic_device_vel);
+          computed_force = computeForce(scalpel_hp_->getGlobalPos(), kGEMSphereRadius_, node_pose, kGEMSphereRadius_, stiffness_[active_surface_], haptic_device_vel);
           node_force = -1.0 * computed_force;
           nodes[active_surface_][x][y][z]->setExternalForce(node_force);
           force.add(computed_force);
@@ -1051,22 +1120,54 @@ void updateHaptics(void)
     if (user_switches == 1 || user_switches == 2) {
       /****/
       def_surf_[active_surface_]->setEnabled(false);
+      /***/
+      scalpel_hp_pos = scalpel_hp_->getGlobalPos();
+      //active_point_pos = active_point_->getGlobalPos();
+      /***/
+      switch (active_point_x_) {
+      case -1:
+          node_coord_x = 2;
+          break;
+      case 0:
+          node_coord_x = 6;
+          break;
+      case 1:
+          node_coord_x = 10;
+          break;
+      default: break;
+      }
+      /***/
+      switch (active_point_y_) {
+      case -1:
+          node_coord_y = 2;
+          break;
+      case 0:
+          node_coord_y = 6;
+          break;
+      case 1:
+          node_coord_y = 10;
+          break;
+      default: break;
+      }
+      /***/
+      node_coord_z = 0;
+      /***/
+      active_point_pos = nodes[active_surface_][node_coord_x][node_coord_y][node_coord_z]->m_pos;
+      /***/
+      active_point_def = active_point_start_pos - active_point_pos;
       /****/
       if (!force_over_limit_ && !max_time_reached_) {
-        //reward_ = fabs(pos.z()); // TO DO
+        reward_ = active_point_def.length();
         lost_reward_ = 0.0;
-        // TO DO: display reward
       } else {
         lost_trial_++;
         reward_ = 0;
-        //lost_reward_ = fabs(pos.z());// TO DO
-        // TO DO: display lost reward
+        lost_reward_ = active_point_def.length();
       }
       /****/
       if (lost_trial_ >= trial_limit_) {
         tot_reward_ = reward_ = 0;
         tot_lost_reward_ += lost_reward_;
-        // TO DO: display reward info
         lost_trial_ = 0;
         max_trial_reached_ = true;
       } else {
@@ -1074,9 +1175,6 @@ void updateHaptics(void)
         tot_lost_reward_ += lost_reward_;
         max_trial_reached_ = false;
       }
-      /***/
-      scalpel_hp_pos = scalpel_hp_->getGlobalPos();
-      active_point_pos = active_point_->getGlobalPos();
       /***/
       response_file_  << trial_idx_                           << ","
                       << active_surface_                      << ","
@@ -1117,8 +1215,41 @@ void updateHaptics(void)
         active_point_y_      = stimuli_[trial_idx_][2];
         multimodal_feedback_ = stimuli_[trial_idx_][3];
         active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
+        // active_point_->computeGlobalPositionsFromRoot();
+        // active_point_start_pos = active_point_->getGlobalPos();
+        switch (active_point_x_) {
+            case -1:
+                node_coord_x = 2;
+                break;
+            case 0:
+                node_coord_x = 6;
+                break;
+            case 1:
+                node_coord_x = 10;
+                break;
+            default: break;
+        }
+        /***/
+        switch (active_point_y_) {
+        case -1:
+            node_coord_y = 2;
+            break;
+        case 0:
+            node_coord_y = 6;
+            break;
+        case 1:
+            node_coord_y = 10;
+            break;
+        default: break;
+        }
+        /***/
+        node_coord_z = 0;
+        /***/
+        active_point_start_pos = nodes[active_surface_][node_coord_x][node_coord_y][node_coord_z]->m_pos;
+        /***/
         scalpel_start_pos_->setEnabled(true);
       } else {
+        scalpel_->setEnabled(false);
         simulationRunning = false;
       }
     }
@@ -1126,7 +1257,38 @@ void updateHaptics(void)
     if (trial_started_) {
       /***/
       scalpel_hp_pos = scalpel_hp_->getGlobalPos();
-      active_point_pos = active_point_->getGlobalPos();
+      //active_point_pos = active_point_->getGlobalPos();
+      switch (active_point_x_) {
+      case -1:
+          node_coord_x = 2;
+          break;
+      case 0:
+          node_coord_x = 6;
+          break;
+      case 1:
+          node_coord_x = 10;
+          break;
+      default: break;
+      }
+      /***/
+      switch (active_point_y_) {
+      case -1:
+          node_coord_y = 2;
+          break;
+      case 0:
+          node_coord_y = 6;
+          break;
+      case 1:
+          node_coord_y = 10;
+          break;
+      default: break;
+      }
+      /***/
+      node_coord_z = 0;
+      /***/
+      active_point_pos = nodes[active_surface_][node_coord_x][node_coord_y][node_coord_z]->m_pos;
+      /***/
+      active_point_def = active_point_start_pos - active_point_pos;
       /***/
       log_file_   << trial_idx_                           << ","
                   << active_surface_                      << ","
