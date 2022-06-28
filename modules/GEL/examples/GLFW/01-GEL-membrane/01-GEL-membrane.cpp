@@ -159,6 +159,8 @@ const double kTestSphereRadius{ 0.005 };
 cPrecisionClock exec_time;
 cPrecisionClock resp_time;
 
+
+
 //---------------------------------------------------------------------------
 // GEL
 //---------------------------------------------------------------------------
@@ -699,7 +701,7 @@ int main(int argc, char* argv[])
         tmp_coin->setEnabled(false);
         coins_red[i] = tmp_coin;
     }
-
+    
     // create a background
     cBackground* background = new cBackground();
     camera->m_backLayer->addChild(background);
