@@ -148,7 +148,7 @@ bool trial_started_{ false };
 std::int32_t lost_trial_{ 0 };
 cPrecisionClock exec_timer_;
 const std::int16_t kNumInst_{ 2 };
-std::int16_t inst_cnt_{ 0 };
+std::int16_t show_inst_cnt_{ 0 };
 cLabel* label_inst_[kNumInst_];
 cLevel* level_time_;
 const std::int32_t kNumSurf_{ 2 };
@@ -187,8 +187,6 @@ double camera_radius_{ 2.0 };
 double camera_angle_{ 0.785/2.0 };
 cBitmap* coin_green_;
 cBitmap* coin_red_;
-bool show_first_inst_{true};
-bool show_second_inst_{false};
 
 //---------------------------------------------------------------------------
 // GEL
@@ -209,6 +207,9 @@ void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height);
 
 // callback when an error GLFW occurs
 void errorCallback(int error, const char* a_description);
+
+// callback to handle mouse click
+void mouseButtonCallback(GLFWwindow* a_window, int a_button, int a_action, int a_mods);
 
 // callback when a key is pressed
 void keyCallback(GLFWwindow* a_window, int a_key, int a_scancode, int a_action, int a_mods);
@@ -310,6 +311,8 @@ int main(int argc, char* argv[])
                     << "reward,lost_reward,total_reward,total_lost_reward,"
                     << "force_over_limit,max_time_reached,max_trial_reached\n";
 
+    show_inst_cnt_ = 0;
+
     //-----------------------------------------------------------------------
     // OPEN GL - WINDOW DISPLAY
     //-----------------------------------------------------------------------
@@ -359,6 +362,9 @@ int main(int argc, char* argv[])
 
     // set key callback
     glfwSetKeyCallback(window, keyCallback);
+
+    // set mouse button callback
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
     // set resize callback
     glfwSetWindowSizeCallback(window, windowSizeCallback);
@@ -737,6 +743,23 @@ std::vector< std::vector<std::int32_t>> LoadStimuli(const std::string filename) 
    return stimuli;
 }
 
+void mouseButtonCallback(GLFWwindow* a_window, int a_button, int a_action, int a_mods) {
+    if (a_button == GLFW_MOUSE_BUTTON_LEFT && a_action == GLFW_PRESS) {
+        switch (show_inst_cnt_) {
+            case 0:
+                label_inst_[show_inst_cnt_]->setEnabled(false);
+                show_inst_cnt_++;
+                label_inst_[show_inst_cnt_]->setEnabled(true);
+                break;
+            case 1:
+                label_inst_[show_inst_cnt_]->setEnabled(false);
+                show_inst_cnt_++;
+                break;
+            default: break;
+        }
+    }
+}
+
 void windowSizeCallback(GLFWwindow* a_window, int a_width, int a_height) {
     // update window size
     width  = a_width;
@@ -847,7 +870,7 @@ void updateGraphics(void)
     // update position of label
     labelRates->setLocalPos((int)(0.5 * (width - labelRates->getWidth())), 15);
 
-    if (show_first_inst_ || show_second_inst_) {
+    if (show_inst_cnt_ < kNumInst_) {
       for (std::int32_t i = 0; i < kNumInst_; ++i) {
         label_inst_[i]->setLocalPos((width - label_inst_[i]->getWidth()) / 2.0, (height - label_inst_[i]->getHeight()) / 2.0);
       }
@@ -885,269 +908,248 @@ void updateGraphics(void)
 }
 
 //---------------------------------------------------------------------------
-
 void updateHaptics(void)
 {
-   // cPrecisionClock iti_timer;
-    cMatrix3d rot;
-    // initialize precision clock
-    cPrecisionClock clock;
-    clock.reset();
+  std::uint32_t user_switches{ 0 };
+  double time_clock;
+  
+  cVector3d haptic_device_pos;
+  cMatrix3d haptic_device_rot;
+  cVector3d haptic_device_vel;
 
-    exec_timer_.reset();
+  cVector3d scalpel_hp_pos;
+  cVector3d scalpel_bb_min;
+  
+  cVector3d force;
 
-    std::uint32_t user_switches{ 0 };
-    std::uint32_t new_user_switches{ 0 };
+  // initialize precision clock
+  cPrecisionClock clock;
+  clock.reset();
 
-    cVector3d test_sphere_pos;
-    cVector3d bb_obj;
+  exec_timer_.reset();
 
-    // simulation in now running
-    simulationRunning  = true;
-    simulationFinished = false;
+  // simulation in now running
+  simulationRunning  = true;
+  simulationFinished = false;
 
-    force_over_limit_ = false;
-    max_trial_reached_ = false;
-    max_time_reached_ = false;
-    trial_started_ = false;
-    lost_trial_ = 0;
+  force_over_limit_ = false;
+  max_trial_reached_ = false;
+  max_time_reached_ = false;
+  trial_started_ = false;
+  lost_trial_ = 0;
     
-    // main haptic simulation loop
-    while(simulationRunning) {   
-        // stop clock
-        double time = cMin(0.001, clock.stop());
+  // main haptic simulation loop
+  while(simulationRunning) {   
+    // stop clock
+    double time_clock = cMin(0.001, clock.stop());
 
-        // restart clock
-        clock.start(true);
+    // restart clock
+    clock.start(true);
 
-        // if (inst_first || inst_second) {
-        //     new_user_switches = 1;
-        //     while (new_user_switches != 0) {
-        //       user_switches = new_user_switches;
-        //       hapticDevice->getUserSwitches(new_user_switches);
-        //     }
-        //     //
-        //     if (user_switches == 1 || user_switches == 2) {
-        //         if (inst_first) {
-        //             inst_first = false;
-        //             inst_second = true;
-        //             labelInst->setEnabled(false);
-        //             labelInstSecond->setEnabled(true);
-        //         }
-        //         else {
-        //             if (inst_second) {
-        //                 inst_first = false;
-        //                 inst_second = false;
-        //                 labelInstSecond->setEnabled(false);
-        //                 labelTime->setEnabled(true);
-        //                 labelRates->setEnabled(true);
-        //                 device_start_pos->setEnabled(true);
-        //                 scalpel->setEnabled(true);
-        //             }
-        //         }
-        //     }
-        //     // integrate dynamics
-        //     defWorld->updateDynamics(time);
-        //     // send forces to haptic device
-        //     hapticDevice->setForce(cVector3d(0.0, 0.0, 0.0));
-        //     // signal frequency counter
-        //     freqCounterHaptics.signal(1);
-        //     continue;
-        // }
-
-        // // read position from haptic device
-        // cVector3d pos;
-        // hapticDevice->getPosition(pos);
-        // hapticDevice->getRotation(rot);
-        // pos.mul(workspaceScaleFactor);
-        // //device->setLocalPos(pos);
-        // scalpel->setLocalPos(pos);
-        // scalpel->setLocalRot(rot);
-
-        // bb_obj = scalpel->getBoundaryMin();
-        // bb_obj.z(0.01);
-        // bb_obj.y(-0.001);
-
-        // test_sphere_pos = scalpel->getLocalPos() + scalpel->getLocalRot() * bb_obj;
-        // test_sphere->setLocalPos(test_sphere_pos);
-
-        // if (!next_trial && !trial_started) {
-        //     if (device_start_pos->getLocalPos().distance(test_sphere_pos) <= kStartPosRadius) {
-        //         device_start_pos->setEnabled(false, true);
-        //         active_point_sphere->setEnabled(true);
-        //         def_surf_[active_surface]->setEnabled(true, true);
-        //         pre_trial_phase = true;
-        //         force_over_limit = false;
-        //         max_time_reached = false;
-        //         std::cout << "TRIAL STARTED\n";
-        //         exec_time.start(true);
-        //     }
-        // }
-
-        // if (pre_trial_phase) {
-        //     if (device_start_pos->getLocalPos().distance(test_sphere_pos) > 4.0 * kStartPosRadius) {
-        //         pre_trial_phase = false;
-        //         active_point_sphere->setEnabled(false);
-        //         trial_started = true;
-        //     }
-        // }
-
-        // cVector3d vel;
-        // hapticDevice->getLinearVelocity(vel);
-
-        // // clear all external forces
-        // defWorld->clearExternalForces();
-
-        // // compute reaction forces
-        // cVector3d force(0.0, 0.0, 0.0);
- 
-        // if (next_trial) {
-        //     // integrate dynamics
-        //     defWorld->updateDynamics(time);
-        //     // send forces to haptic device
-        //     hapticDevice->setForce(force);
-        //     // signal frequency counter
-        //     freqCounterHaptics.signal(1);
-        //     continue;
-        // }
-
-        // for (int z = 0; z < kNumNodeZ; z++) {
-        //     for (int y = 0; y < kNumNodeY; y++) {
-        //         for (int x = 0; x < kNumNodeX; x++) {
-        //             cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
-        //             cVector3d f = computeForce(test_sphere->getLocalPos(), kGEMSphereRadius, nodePos, kGEMSphereRadius, stiffness[active_surface], vel);
-        //             cVector3d tmpfrc = -1.0 * f;
-        //             if (force_over_limit || max_time_reached || !trial_started) tmpfrc.zero();
-        //             nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
-        //             force.add(f);
-        //         }
-        //     }
-        // }
-
-        // // integrate dynamics
-        // defWorld->updateDynamics(time);
-
-        // // scale force
-        // force.mul(deviceForceScale / workspaceScaleFactor);
-        
-        // hapticDevice->getUserSwitches(user_switches);
-
-        // if (!trial_started) old_user_switches = user_switches = 0;
-        // else old_user_switches = user_switches;
-        
-        // std::cout << old_user_switches << "," << user_switches << "\r";
-
-        // if (trial_started && !force_over_limit && force.length() > max_force[active_surface]) {
-        //     cMaterial mat;
-        //     mat.setRedCrimson();
-        //     mat.setShininess(100);
-        //     def_surf_[active_surface]->setMaterial(mat, true);
-        //     force_over_limit = true;
-        //     user_switches = 1;
-        //     std::cout << "FORCE OVER LIMIT\n";
-        // }
-
-        // if (trial_started && !max_time_reached && exec_time.getCurrentTimeSeconds() > max_time) {
-        //   max_time_reached = true;
-        //   user_switches = 1;
-        //   std::cout << "MAX TIME REACHED\n";
-        // }
-
-        // if (trial_started && (user_switches == 1 || user_switches == 2)) {
-        //     /****/
-        //     cMaterial mat;
-        //     mat.setWhite();
-        //     mat.setShininess(100);
-        //     /****/
-        //     def_surf_[active_surface]->setEnabled(false, true);
-        //     def_surf_[active_surface]->setMaterial(mat, true);
-        //     /****/
-        //     if (!force_over_limit && !max_time_reached) {
-        //         reward = fabs(pos.z());
-        //         lost_reward = 0.0;
-        //         coins_green[num_green_coin++]->setEnabled(true);
-        //     } else {
-        //         lost_trial++;
-        //         reward = 0;
-        //         lost_reward = fabs(pos.z());
-        //         coins_red[num_red_coin++]->setEnabled(true);
-        //     }
-
-        //     if (lost_trial > trial_limit) {
-        //       tot_reward = tot_lost_reward = reward = lost_reward = 0;
-        //       num_green_coin = num_red_coin = 0;
-        //       for (std::int32_t i = 0; i < kNumCoins; ++i) {
-        //           coins_green[i]->setEnabled(false);
-        //       }
-        //       lost_trial = 0;
-        //       max_trial_reached = true;
-        //     } else {
-        //       tot_reward += reward;
-        //       tot_lost_reward += lost_reward;
-        //       max_trial_reached = false;
-        //     }
-
-        //     response_file << trial_idx << ","
-        //         << active_surface << ","
-        //         << active_point_x << ","
-        //         << active_point_y << ","
-        //         << multimodal_feedback << ","
-        //         << exec_time.stop() << ","
-        //         << force.x() << ","
-        //         << force.y() << ","
-        //         << force.z() << ","
-        //         << reward << ","
-        //         << lost_reward << ","
-        //         << tot_reward << ","
-        //         << tot_lost_reward << ","
-        //         << max_force[active_surface] << ","
-        //         << max_time << ","
-        //         << trial_limit << ","
-        //         << stiffness[active_surface] << ","
-        //         << force_over_limit << ","
-        //         << max_time_reached << ","
-        //         << max_trial_reached << "\n";
-
-        //     std::cout << "Total Reward: " << tot_reward << "\n"
-        //               << "Total LOST Reward: " << tot_lost_reward << "\n";
-        //     trial_started = false;
-        //     //iti = true;
-        //     //iti_timer.start(true);
-        //     device_start_pos->setEnabled(true, true);
-        //     next_trial = true;
-        // }
-        
-        // /*if (iti && iti_timer.getCurrentTimeSeconds() > kITI) {
-        //     device_start_pos->setEnabled(true, true);
-        //     next_trial = true;
-        //     iti = false;
-        //     iti_timer.stop();
-        // } else {*/
-        //     if (trial_started) {
-        //         log_file << trial_idx << ","
-        //             << active_surface << ","
-        //             << active_point_x << ","
-        //             << active_point_y << ","
-        //             << multimodal_feedback << ","
-        //             << exec_time.getCurrentTimeSeconds() << ","
-        //             << force.x() << ","
-        //             << force.y() << ","
-        //             << force.z() << "\n";
-        //     }
-        // //}
-
-        // //if (multimodal_feedback == 0 || force_over_limit || max_time_reached || !trial_started || iti) force.zero();
-        // if (multimodal_feedback == 0 || force_over_limit || max_time_reached || !trial_started) force.zero();
-
-        // // send forces to haptic device
-        // hapticDevice->setForce(force);
-
-        // signal frequency counter
-        freqCounterHaptics.signal(1);
+    if (show_inst_cnt_ < kNumInst_) {
+      // integrate dynamics
+      defWorld->updateDynamics(time_clock);
+      // send forces to haptic device
+      force.zero();
+      hapticDevice->setForce(force);
+      // signal frequency counter
+      freqCounterHaptics.signal(1);
+      continue;
     }
 
-    // exit haptics thread
-    simulationFinished = true;
+    hapticDevice->getPosition(haptic_device_pos);
+    hapticDevice->getRotation(haptic_device_rot);
+    hapticDevice->getLinearVelocity(haptic_device_vel);
+
+    haptic_device_pos.mul(workspaceScaleFactor);
+    
+    scalpel_->setLocalPos(haptic_device_pos);
+    scalpel_->setLocalRot(haptic_device_rot);
+
+    scalpel_bb_min = scalpel_->getBoundaryMin();
+    scalpel_bb_min.z(0.01);
+    scalpel_bb_min.y(-0.001);
+
+    scalpel_hp_pos = scalpel_bb_min;
+    scalpel_hp_->setLocalPos(scalpel_hp_pos);
+
+      // if (!next_trial && !trial_started) {
+      //     if (device_start_pos->getLocalPos().distance(test_sphere_pos) <= kStartPosRadius) {
+      //         device_start_pos->setEnabled(false, true);
+      //         active_point_sphere->setEnabled(true);
+      //         def_surf_[active_surface]->setEnabled(true, true);
+      //         pre_trial_phase = true;
+      //         force_over_limit = false;
+      //         max_time_reached = false;
+      //         std::cout << "TRIAL STARTED\n";
+      //         exec_time.start(true);
+      //     }
+      // }
+
+      // if (pre_trial_phase) {
+      //     if (device_start_pos->getLocalPos().distance(test_sphere_pos) > 4.0 * kStartPosRadius) {
+      //         pre_trial_phase = false;
+      //         active_point_sphere->setEnabled(false);
+      //         trial_started = true;
+      //     }
+      // }
+
+      // cVector3d vel;
+      // hapticDevice->getLinearVelocity(vel);
+
+      // // clear all external forces
+      // defWorld->clearExternalForces();
+
+      // // compute reaction forces
+      // cVector3d force(0.0, 0.0, 0.0);
+
+      // if (next_trial) {
+      //     // integrate dynamics
+      //     defWorld->updateDynamics(time);
+      //     // send forces to haptic device
+      //     hapticDevice->setForce(force);
+      //     // signal frequency counter
+      //     freqCounterHaptics.signal(1);
+      //     continue;
+      // }
+
+      // for (int z = 0; z < kNumNodeZ; z++) {
+      //     for (int y = 0; y < kNumNodeY; y++) {
+      //         for (int x = 0; x < kNumNodeX; x++) {
+      //             cVector3d nodePos = nodes[active_surface][x][y][z]->m_pos;
+      //             cVector3d f = computeForce(test_sphere->getLocalPos(), kGEMSphereRadius, nodePos, kGEMSphereRadius, stiffness[active_surface], vel);
+      //             cVector3d tmpfrc = -1.0 * f;
+      //             if (force_over_limit || max_time_reached || !trial_started) tmpfrc.zero();
+      //             nodes[active_surface][x][y][z]->setExternalForce(tmpfrc);
+      //             force.add(f);
+      //         }
+      //     }
+      // }
+
+      // // integrate dynamics
+      // defWorld->updateDynamics(time);
+
+      // // scale force
+      // force.mul(deviceForceScale / workspaceScaleFactor);
+      
+      // hapticDevice->getUserSwitches(user_switches);
+
+      // if (!trial_started) old_user_switches = user_switches = 0;
+      // else old_user_switches = user_switches;
+      
+      // std::cout << old_user_switches << "," << user_switches << "\r";
+
+      // if (trial_started && !force_over_limit && force.length() > max_force[active_surface]) {
+      //     cMaterial mat;
+      //     mat.setRedCrimson();
+      //     mat.setShininess(100);
+      //     def_surf_[active_surface]->setMaterial(mat, true);
+      //     force_over_limit = true;
+      //     user_switches = 1;
+      //     std::cout << "FORCE OVER LIMIT\n";
+      // }
+
+      // if (trial_started && !max_time_reached && exec_time.getCurrentTimeSeconds() > max_time) {
+      //   max_time_reached = true;
+      //   user_switches = 1;
+      //   std::cout << "MAX TIME REACHED\n";
+      // }
+
+      // if (trial_started && (user_switches == 1 || user_switches == 2)) {
+      //     /****/
+      //     cMaterial mat;
+      //     mat.setWhite();
+      //     mat.setShininess(100);
+      //     /****/
+      //     def_surf_[active_surface]->setEnabled(false, true);
+      //     def_surf_[active_surface]->setMaterial(mat, true);
+      //     /****/
+      //     if (!force_over_limit && !max_time_reached) {
+      //         reward = fabs(pos.z());
+      //         lost_reward = 0.0;
+      //         coins_green[num_green_coin++]->setEnabled(true);
+      //     } else {
+      //         lost_trial++;
+      //         reward = 0;
+      //         lost_reward = fabs(pos.z());
+      //         coins_red[num_red_coin++]->setEnabled(true);
+      //     }
+
+      //     if (lost_trial > trial_limit) {
+      //       tot_reward = tot_lost_reward = reward = lost_reward = 0;
+      //       num_green_coin = num_red_coin = 0;
+      //       for (std::int32_t i = 0; i < kNumCoins; ++i) {
+      //           coins_green[i]->setEnabled(false);
+      //       }
+      //       lost_trial = 0;
+      //       max_trial_reached = true;
+      //     } else {
+      //       tot_reward += reward;
+      //       tot_lost_reward += lost_reward;
+      //       max_trial_reached = false;
+      //     }
+
+      //     response_file << trial_idx << ","
+      //         << active_surface << ","
+      //         << active_point_x << ","
+      //         << active_point_y << ","
+      //         << multimodal_feedback << ","
+      //         << exec_time.stop() << ","
+      //         << force.x() << ","
+      //         << force.y() << ","
+      //         << force.z() << ","
+      //         << reward << ","
+      //         << lost_reward << ","
+      //         << tot_reward << ","
+      //         << tot_lost_reward << ","
+      //         << max_force[active_surface] << ","
+      //         << max_time << ","
+      //         << trial_limit << ","
+      //         << stiffness[active_surface] << ","
+      //         << force_over_limit << ","
+      //         << max_time_reached << ","
+      //         << max_trial_reached << "\n";
+
+      //     std::cout << "Total Reward: " << tot_reward << "\n"
+      //               << "Total LOST Reward: " << tot_lost_reward << "\n";
+      //     trial_started = false;
+      //     //iti = true;
+      //     //iti_timer.start(true);
+      //     device_start_pos->setEnabled(true, true);
+      //     next_trial = true;
+      // }
+      
+      // /*if (iti && iti_timer.getCurrentTimeSeconds() > kITI) {
+      //     device_start_pos->setEnabled(true, true);
+      //     next_trial = true;
+      //     iti = false;
+      //     iti_timer.stop();
+      // } else {*/
+      //     if (trial_started) {
+      //         log_file << trial_idx << ","
+      //             << active_surface << ","
+      //             << active_point_x << ","
+      //             << active_point_y << ","
+      //             << multimodal_feedback << ","
+      //             << exec_time.getCurrentTimeSeconds() << ","
+      //             << force.x() << ","
+      //             << force.y() << ","
+      //             << force.z() << "\n";
+      //     }
+      // //}
+
+      // //if (multimodal_feedback == 0 || force_over_limit || max_time_reached || !trial_started || iti) force.zero();
+      if (multimodal_feedback_ == 0 || !trial_started_) force.zero();
+
+      // // send forces to haptic device
+      hapticDevice->setForce(force);
+
+      // signal frequency counter
+      freqCounterHaptics.signal(1);
+  }
+
+  // exit haptics thread
+  simulationFinished = true;
 }
 
 //---------------------------------------------------------------------------
