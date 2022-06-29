@@ -190,6 +190,7 @@ cBitmap* coin_green_;
 cBitmap* coin_red_;
 cLabel* label_reward_;
 cLabel* label_lost_reward_;
+double time_to_level_;
 
 //---------------------------------------------------------------------------
 // GEL
@@ -683,6 +684,22 @@ int main(int argc, char* argv[])
     label_lost_reward_->setEnabled(false);
     label_lost_reward_->setText("0.0");
 
+    /****/
+    level_time_ = new cLevel();
+    level_time_->m_colorActive.setBlue();
+    level_time_->m_colorInactive.setGrayDark();
+    camera->m_frontLayer->addChild(level_time_);
+    level_time_->setRange(0.0, 1.0);
+    level_time_->setWidth(50);
+    level_time_->setNumIncrements(200);
+    level_time_->setSingleIncrementDisplay(false);
+    level_time_->setTransparencyLevel(0.8);
+    level_time_->setValue(0.0);
+    level_time_->rotateWidgetAroundCenterDeg(90);
+    level_time_->setEnabled(false);
+
+    time_to_level_ = level_time_->getRangeMax() / max_time_;
+
     // create a background
     cBackground* background = new cBackground();
     camera->m_backLayer->addChild(background);
@@ -911,8 +928,13 @@ void updateGraphics(void)
     label_reward_->setText(std::to_string((std::int32_t) round(1000.0 * tot_reward_)));
     label_lost_reward_->setText(std::to_string((std::int32_t) round(1000.0 * tot_lost_reward_)));
 
-    label_reward_->setLocalPos(width - w_coin - 2.0 * label_reward_->getWidth(), 0.8 * h_coin / 2.0);
+    label_reward_->setLocalPos(width - w_coin - 1.5 * label_reward_->getWidth(), 0.8 * h_coin / 2.0);
+
     label_lost_reward_->setLocalPos(1.2 * w_coin, 0.8 * h_coin / 2.0);
+
+    level_time_->setLocalPos(0.70 * width, 0.93 * height);
+    
+    level_time_->setValue(time_to_level_ * exec_timer_.getCurrentTimeSeconds());
 
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
@@ -1080,6 +1102,8 @@ void updateHaptics(void)
         trial_started_ = true;
         force_over_limit_ = false;
         max_time_reached_ = false;
+        level_time_->setValue(level_time_->getRangeMin());
+        level_time_->setEnabled(true);
         exec_timer_.start(true);
       }
       // clear all external forces
@@ -1129,6 +1153,8 @@ void updateHaptics(void)
     if (user_switches == 1 || user_switches == 2) {
       /****/
       def_surf_[active_surface_]->setEnabled(false);
+      /***/
+      level_time_->setEnabled(false);
       /***/
       scalpel_hp_pos = scalpel_hp_->getGlobalPos();
       //active_point_pos = active_point_->getGlobalPos();
