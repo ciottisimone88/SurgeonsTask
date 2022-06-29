@@ -164,6 +164,7 @@ const double kGEMSphereRadius_{ 0.05 };
 const double kScalpelStartPosRadius_{ 0.05 };
 const double kActivePointRadius_{ 0.05 };
 const double kScalpelHPRadius_{ 0.005 };
+const cMatrix3d kActivePointRewardGain_{ cVector3d(4.0, 2.0, 4.0), cVector3d(2.0, 1.0, 2.0), cVector3d(4.0, 2.0, 4.0) };
 std::vector<std::vector<std::int32_t>> stimuli_(0);
 nlohmann::json config_file_json_;
 std::ifstream config_file_("./config.json");
@@ -182,7 +183,7 @@ double tot_lost_reward_{ 0.0 };
 cGELMesh* def_surf_[kNumSurf_];
 cMultiMesh* scalpel_;
 cShapeSphere* scalpel_hp_;
-cShapeSphere* scalpel_start_pos_;
+cShapeEllipsoid* scalpel_start_pos_;
 double camera_radius_{ 2.0 };
 double camera_angle_{ 0.785/2.0 };
 cBitmap* coin_green_;
@@ -500,11 +501,16 @@ int main(int argc, char* argv[])
     deviceForceScale = 5.0;
 
     // create a large sphere that represents the haptic device
-    scalpel_start_pos_ = new cShapeSphere(kScalpelStartPosRadius_);
+    scalpel_start_pos_ = new cShapeEllipsoid(kScalpelStartPosRadius_, kScalpelStartPosRadius_, kScalpelStartPosRadius_ / 1.5);
     world->addChild(scalpel_start_pos_);
-    scalpel_start_pos_->m_material->setGreenDark();
+    scalpel_start_pos_->m_material->setGreenLime();
     scalpel_start_pos_->m_material->setShininess(100);
     scalpel_start_pos_->setLocalPos(0.0, 0.0, 0.5);
+    cMatrix3d scalpel_start_pos_rot;
+    scalpel_start_pos_rot.setAxisAngleRotationDeg(cVector3d(0, 1, 0), 45);
+    scalpel_start_pos_->setUseTransparency(true);
+    scalpel_start_pos_->setTransparencyLevel(0.4);
+    scalpel_start_pos_->setLocalRot(scalpel_start_pos_rot);
     scalpel_start_pos_->setEnabled(false);
 
     //-----------------------------------------------------------------------
@@ -901,12 +907,12 @@ void updateGraphics(void)
     double h_coin = coin_green_->getHeight();
     coin_green_->setLocalPos(width - 1.1 * w_coin, 0.1 * h_coin);
     coin_red_->setLocalPos(0.1 * w_coin, 0.1 * h_coin);
+    
+    label_reward_->setText(std::to_string((std::int32_t) round(1000.0 * tot_reward_)));
+    label_lost_reward_->setText(std::to_string((std::int32_t) round(1000.0 * tot_lost_reward_)));
 
-    label_reward_->setText(std::to_string(tot_reward_));
-    label_lost_reward_->setText(std::to_string(tot_lost_reward_));
-
-    label_reward_->setLocalPos(width - 1.35 * w_coin - 1.1 * label_reward_->getWidth(), 0.8 * h_coin / 2.0);
-    label_lost_reward_->setLocalPos(0.9 * w_coin + 1.1 * label_lost_reward_->getWidth(), 0.8 * h_coin / 2.0);
+    label_reward_->setLocalPos(width - w_coin - 2.0 * label_reward_->getWidth(), 0.8 * h_coin / 2.0);
+    label_lost_reward_->setLocalPos(1.2 * w_coin, 0.8 * h_coin / 2.0);
 
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
@@ -961,6 +967,9 @@ void updateHaptics(void)
   std::int32_t node_coord_x;
   std::int32_t node_coord_y;
   std::int32_t node_coord_z{ 0 };
+
+  cVector3d active_point_col_gain;
+  double active_point_gain;
 
   // initialize precision clock
   cPrecisionClock clock;
@@ -1127,12 +1136,15 @@ void updateHaptics(void)
       switch (active_point_x_) {
       case -1:
           node_coord_x = 2;
+          active_point_col_gain = kActivePointRewardGain_.getCol0();
           break;
       case 0:
           node_coord_x = 6;
+          active_point_col_gain = kActivePointRewardGain_.getCol1();
           break;
       case 1:
           node_coord_x = 10;
+          active_point_col_gain = kActivePointRewardGain_.getCol2();
           break;
       default: break;
       }
@@ -1140,12 +1152,15 @@ void updateHaptics(void)
       switch (active_point_y_) {
       case -1:
           node_coord_y = 2;
+          active_point_gain = active_point_col_gain.x();
           break;
       case 0:
           node_coord_y = 6;
+          active_point_gain = active_point_col_gain.y();
           break;
       case 1:
           node_coord_y = 10;
+          active_point_gain = active_point_col_gain.z();
           break;
       default: break;
       }
@@ -1157,12 +1172,12 @@ void updateHaptics(void)
       active_point_def = active_point_start_pos - active_point_pos;
       /****/
       if (!force_over_limit_ && !max_time_reached_) {
-        reward_ = active_point_def.length();
+        reward_ = active_point_gain * active_point_def.length();
         lost_reward_ = 0.0;
       } else {
         lost_trial_++;
         reward_ = 0;
-        lost_reward_ = active_point_def.length();
+        lost_reward_ = active_point_gain * active_point_def.length();
       }
       /****/
       if (lost_trial_ >= trial_limit_) {
