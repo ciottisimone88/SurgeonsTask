@@ -1,8 +1,0 @@
-Con i coin è impossibile quantificare la quantità esatta, non c'è spazio ed usare coin diversi sovrapposti non da un vero feedback.
-Con i sacchetti idem.
-
-Con i levels il problema è lo spazio solo quello, abbiamo 2 [surfaces] * 9 [active points] * 2 [modalities] * 10 [reps] = 360 [trials]
-Se si impotizza un 4 livelli reward per trial otteniamo 360 * 4 = 1440 levels
-Non entrano nello schermo neanche se lo dividiamo in più barre affiancate, troppe cose sullo schermo che distraggono dal task.
-
-Soluzione usare un label per quantificare numericamente.

@@ -54,6 +54,7 @@
 #include <string>
 #include <sstream>
 #include <ctime>
+#include <windows.h>
 
 //------------------------------------------------------------------------------
 using namespace chai3d;
@@ -183,7 +184,8 @@ double tot_lost_reward_{ 0.0 };
 cGELMesh* def_surf_[kNumSurf_];
 cMultiMesh* scalpel_;
 cShapeSphere* scalpel_hp_;
-cShapeEllipsoid* scalpel_start_pos_;
+//cShapeEllipsoid* scalpel_start_pos_;
+cShapeSphere* scalpel_start_pos_;
 double camera_radius_{ 2.0 };
 double camera_angle_{ 0.785/2.0 };
 cBitmap* coin_green_;
@@ -191,6 +193,7 @@ cBitmap* coin_red_;
 cLabel* label_reward_;
 cLabel* label_lost_reward_;
 double time_to_level_;
+cLabel* label_finished_;
 
 //---------------------------------------------------------------------------
 // GEL
@@ -276,8 +279,6 @@ int main(int argc, char* argv[])
     // parse first arg to try and locate resources
     resourceRoot = string(argv[0]).substr(0,string(argv[0]).find_last_of("/\\")+1);
 
-    stimuli_ = LoadStimuli("./stimuli.csv");
-
     config_file_ >> config_file_json_;
     config_file_.close();
     
@@ -316,6 +317,10 @@ int main(int argc, char* argv[])
                     << "force_over_limit,max_time_reached,max_trial_reached\n";
 
     show_inst_cnt_ = 0;
+
+    system("rscript ./stimuli_gen.R");
+
+    stimuli_ = LoadStimuli("./stimuli.csv");
 
     //-----------------------------------------------------------------------
     // OPEN GL - WINDOW DISPLAY
@@ -502,16 +507,17 @@ int main(int argc, char* argv[])
     deviceForceScale = 5.0;
 
     // create a large sphere that represents the haptic device
-    scalpel_start_pos_ = new cShapeEllipsoid(kScalpelStartPosRadius_, kScalpelStartPosRadius_, kScalpelStartPosRadius_ / 1.5);
+    //scalpel_start_pos_ = new cShapeEllipsoid(kScalpelStartPosRadius_, kScalpelStartPosRadius_, kScalpelStartPosRadius_ / 1.5);
+    scalpel_start_pos_ = new cShapeSphere(kScalpelStartPosRadius_);
     world->addChild(scalpel_start_pos_);
     scalpel_start_pos_->m_material->setGreenLime();
     scalpel_start_pos_->m_material->setShininess(100);
     scalpel_start_pos_->setLocalPos(0.0, 0.0, 0.5);
-    cMatrix3d scalpel_start_pos_rot;
-    scalpel_start_pos_rot.setAxisAngleRotationDeg(cVector3d(0, 1, 0), 45);
+    //cMatrix3d scalpel_start_pos_rot;
+    //scalpel_start_pos_rot.setAxisAngleRotationDeg(cVector3d(0, 1, 0), 45);
     scalpel_start_pos_->setUseTransparency(true);
     scalpel_start_pos_->setTransparencyLevel(0.4);
-    scalpel_start_pos_->setLocalRot(scalpel_start_pos_rot);
+    //scalpel_start_pos_->setLocalRot(scalpel_start_pos_rot);
     scalpel_start_pos_->setEnabled(false);
 
     //-----------------------------------------------------------------------
@@ -699,6 +705,13 @@ int main(int argc, char* argv[])
     level_time_->setEnabled(false);
 
     time_to_level_ = level_time_->getRangeMax() / max_time_;
+
+    label_finished_ = new cLabel(font_reward);
+    camera->m_frontLayer->addChild(label_finished_);
+    label_finished_->m_fontColor.setBlack();
+    label_finished_->setColor(cColorf(0.0, 0.0, 0.0));
+    label_finished_->setEnabled(false);
+    label_finished_->setText("Esperimento Terminato");
 
     // create a background
     cBackground* background = new cBackground();
@@ -1092,12 +1105,13 @@ void updateHaptics(void)
 
     if (!trial_started_) {
       /***/
-      if (scalpel_start_pos_->getEnabled() && scalpel_start_pos_->getLocalPos().distance(scalpel_hp_->getGlobalPos()) <= kScalpelStartPosRadius_) {
+      if (scalpel_start_pos_->getEnabled() && fabs(scalpel_start_pos_->getLocalPos().z() - scalpel_hp_->getGlobalPos().z()) <= kScalpelStartPosRadius_) {
         scalpel_start_pos_->setEnabled(false);
         def_surf_[active_surface_]->setEnabled(true);
         active_point_->setEnabled(true);
       } 
-      if (!scalpel_start_pos_->getEnabled() && scalpel_start_pos_->getLocalPos().distance(scalpel_hp_->getGlobalPos()) > 4.0 * kScalpelStartPosRadius_) {
+      //if (!scalpel_start_pos_->getEnabled() && fabs(scalpel_start_pos_->getLocalPos().z() - scalpel_hp_->getGlobalPos().z()) > 4.0 * kScalpelStartPosRadius_) {
+      if (!scalpel_start_pos_->getEnabled() && fabs(active_point_->getGlobalPos().z() - scalpel_hp_->getGlobalPos().z()) <= kScalpelStartPosRadius_) {
         active_point_->setEnabled(false);
         trial_started_ = true;
         force_over_limit_ = false;
@@ -1198,9 +1212,11 @@ void updateHaptics(void)
       active_point_def = active_point_start_pos - active_point_pos;
       /****/
       if (!force_over_limit_ && !max_time_reached_) {
+        Beep(1500, 250);
         reward_ = active_point_gain * active_point_def.length();
         lost_reward_ = 0.0;
       } else {
+        Beep(300, 250);
         lost_trial_++;
         reward_ = 0;
         lost_reward_ = active_point_gain * active_point_def.length();
@@ -1292,6 +1308,7 @@ void updateHaptics(void)
       } else {
         scalpel_->setEnabled(false);
         simulationRunning = false;
+        label_finished_->setEnabled(true);
       }
     }
     /****/
