@@ -196,6 +196,7 @@ cLabel* label_reward_;
 cLabel* label_lost_reward_;
 double time_to_level_;
 cLabel* label_finished_;
+cLabel* label_is_training_;
 std::int32_t stencil_points_;
 std::int32_t is_training_;
 
@@ -666,21 +667,31 @@ int main(int argc, char* argv[])
       label_inst_[i]->setEnabled(false);
     }
     
-    std::string testo_inst = "Questo test ha lo scopo di misurare le sue capacita' di usare indizi visivi e / o tattili.\n\n";
-    testo_inst += "Le verra' chiesto di deformare una serie di lastre virtuali che si susseguono. La deformazione puo' essere ottenuta tramite\nun bisturi controllato attraverso il dispositivo (braccio robotico) posto di fronte a lei. Questo dispositivo puo' erogare o meno\nun feedback tattile, ovvero una forza che si oppone al movimento di deformazione della lastra.\n\n";
-    testo_inst += "Col bisturi deve imprimere una pressione sulla lastra per deformarla e piu' riuscira' a deformarla senza perforarla maggiore\nsara' la ricompensa (monete verdi). Qualora la lastra venisse perforata, le verra' conteggiata una perdita (monete rosse).\n\n";
+    std::string testo_inst = "Il test BAST (slaBs deformAtion riSk Task) ha lo scopo di misurare le sue capacita' di usare indizi visivi e / o tattili.\n\n";
+    testo_inst += "Le verra' chiesto di deformare una serie di lastre gelatinose virtuali che si susseguono. La deformazione puo' essere ottenuta tramite\n";
+    testo_inst += "un bisturi controllato attraverso il dispositivo (braccio robotico) posto di fronte a lei.\n";
+    testo_inst += "Questo dispositivo puo' erogare o meno un feedback tattile, ovvero una forza che si oppone al movimento di deformazione della lastra.\n\n";
+    testo_inst += "Col bisturi deve imprimere una pressione sulla lastra per deformarla.\n";
+    testo_inst += "Piu' riuscira' a deformarla senza perforarla, maggiore sara' la ricompensa (monete verdi).\n";
+    testo_inst += "Qualora la lastra venisse perforata, le verra' conteggiata una perdita (monete rosse).\n\n";
     testo_inst += "Le varie lastre hanno un punto di rottura diverso, percio' dovra' porre attenzione a quanta pressione esercitera' sulla lastra stessa.\n\n";
-    testo_inst += "Il suo compito e' quello di guadagnare piu' monete verdi possibili e minimizzare quello delle monete rosse.\n\n";
-    testo_inst += "Prema un tasto per andare avanti";
-    
+    testo_inst += "Il suo compito e' quello di guadagnare piu' monete verdi possibili, minimizzando l'accumulo di monete rosse.\n\n";
+    testo_inst += "Prema il tasto sinistro del mouse per andare avanti";
+
     label_inst_[0]->setText(testo_inst);
     label_inst_[0]->setEnabled(true);
 
-    testo_inst = "Per iniziare la singola prova deve toccare la sfera verde con il bisturi, portarlo sulla lastra\nnel punto indicato dalla sfera ed iniziare a premere sulla lastra.\n\n";
-    testo_inst += "Una volta ritenuto di aver raggiunto il massimo grado di deformazione, prema un tasto sul braccio robotico.\n";
-    testo_inst += "Se invece lei oltrepassa il punto di rottura della lastra o se impiega piu' di 10 secondi per deformare la lastra\nsenza premere uno dei tasti, la singola prova sara' considerata fallita e verranno assegnate le monete rosse.\n\n";
-    testo_inst += "Superata la soglia di 10 errori, il suo guadagno cumulato sara' totalmente perso, e dovra' ricominciare a guadagnare le monete verdi.\n\n";
-    testo_inst += "Prema un tasto per cominciare";
+    testo_inst = "Per iniziare la singola prova portare il bisturi all'altezza della sfera verde, portarlo sulla lastra nel punto\n";
+    testo_inst += "indicato dalla pallina bianca e iniziare a premere sulla lastra.\n\n";
+    testo_inst += "Una volta ritenuto di aver raggiunto il massimo grado di deformazione, prema uno dei due tasti sul braccio robotico.\n";
+    testo_inst += "Se invece lei oltrepassa il punto di rottura della lastra, o impiega piu' di 5 secondi per deformare la lastra senza premere uno dei tasti,\n";
+    testo_inst += "la singola prova sara' considerata fallita, e le verranno assegnate le monete rosse.\n";
+    testo_inst += "Quando fallisce la prova, sentira' un suono basso; quando vince, sentira' un suono acuto.\n";
+    testo_inst += "Superata la soglia di 10 errori, il suo guadagno cumulato sara' totalmente perso e sentrira' un suono basso di durata maggiore,\n";
+    testo_inst += "e dovra' ricominciare a guadagnare le monete verdi.\n\n";
+    testo_inst += "Adesso iniziera' una breve fase di training che servira' a prendere dimestichezza con il compito stesso.\n";
+    testo_inst += "Successivamente, iniziera' il compito vero e proprio.\n\n";
+    testo_inst += "Prema il tasto sinistro del mouse per andare avanti";
 
     label_inst_[1]->setText(testo_inst);
     
@@ -721,6 +732,13 @@ int main(int argc, char* argv[])
     label_finished_->setColor(cColorf(0.0, 0.0, 0.0));
     label_finished_->setEnabled(false);
     label_finished_->setText("ESPERIMENTO TERMINATO");
+
+    label_is_training_ = new cLabel(font_reward);
+    camera->m_frontLayer->addChild(label_is_training_);
+    label_is_training_->m_fontColor.setBlack();
+    label_is_training_->setColor(cColorf(0.0, 0.0, 0.0));
+    label_is_training_->setEnabled(false);
+    label_is_training_->setText("FASE DI TRAINING");
 
     // create a background
     cBackground* background = new cBackground();
@@ -823,6 +841,7 @@ void mouseButtonCallback(GLFWwindow* a_window, int a_button, int a_action, int a
                 label_reward_->setEnabled(true);
                 label_lost_reward_->setEnabled(true);
                 show_inst_cnt_++;
+                label_is_training_->setEnabled(true);
                 break;
             default: break;
         }
@@ -938,7 +957,8 @@ void updateGraphics(void)
 
     if (show_inst_cnt_ < kNumInst_) {
       for (std::int32_t i = 0; i < kNumInst_; ++i) {
-        label_inst_[i]->setLocalPos((width - label_inst_[i]->getWidth()) / 2.0, (height - label_inst_[i]->getHeight()) / 2.0);
+        //label_inst_[i]->setLocalPos((width - label_inst_[i]->getWidth()) / 2.0, (height - label_inst_[i]->getHeight()) / 2.0);
+        label_inst_[i]->setLocalPos(20.0, (height - label_inst_[i]->getHeight()) / 2.0);
       }
     }
 
@@ -959,6 +979,8 @@ void updateGraphics(void)
     level_time_->setValue(time_to_level_ * exec_timer_.getCurrentTimeSeconds());
 
     label_finished_->setLocalPos((width - label_finished_->getWidth()) / 2, (height - label_finished_->getHeight()) / 2);
+
+    label_is_training_->setLocalPos((width - label_is_training_->getWidth()) / 2, label_is_training_->getHeight());
 
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
@@ -1047,10 +1069,14 @@ void updateHaptics(void)
   active_point_x_       = stimuli_[trial_idx_][1];
   active_point_y_       = stimuli_[trial_idx_][2];
   multimodal_feedback_  = stimuli_[trial_idx_][3];
-  is_training_ = stimuli_[trial_idx_][4];
+  is_training_          = stimuli_[trial_idx_][4];
   /***/
-  if (is_training_ == 0) cnt_training++;
-  else first_trial = false;
+  cnt_training++;
+  /*if (is_training_ == 1) cnt_training++;
+  else {
+      label_is_training_->setEnabled(false);
+      first_trial = false;
+  }*/
   /***/
   if (stencil_points_ != 5) active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
   else active_point_->setLocalPos(6.0 * kGEMSphereRadius_ * active_point_x_, 6.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
@@ -1244,7 +1270,7 @@ void updateHaptics(void)
       }
       /****/
       if (lost_trial_ >= trial_limit_) {
-        Beep(800, 250);
+        Beep(500, 500);
       } else {
           if (force_over_limit_ || max_time_reached_) {
               Beep(500, 250);
@@ -1262,9 +1288,9 @@ void updateHaptics(void)
         max_trial_reached_ = false;
       }
       /***/
-      if (is_training_ != 0) {
+      if (is_training_ == 0) {
           response_file_ << trial_idx_ - cnt_training << ","
-              << active_surface_ << ","
+              << active_surface_ + 1 << ","
               << active_point_x_ << ","
               << active_point_y_ << ","
               << multimodal_feedback_ << ","
@@ -1305,12 +1331,13 @@ void updateHaptics(void)
         multimodal_feedback_ = stimuli_[trial_idx_][3];
         is_training_ = stimuli_[trial_idx_][4];
         /****/
-        if (is_training_ == 0) cnt_training++;
+        if (is_training_ == 1) cnt_training++;
         /***/
-        if (first_trial && is_training_ == 1) {
+        if (first_trial && is_training_ == 0) {
             tot_reward_ = 0.0;
             tot_lost_reward_ = 0.0;
             lost_trial_ = 0;
+            label_is_training_->setEnabled(false);
             first_trial = false;
         }
         /****/
@@ -1391,9 +1418,9 @@ void updateHaptics(void)
       /***/
       active_point_def = active_point_start_pos - active_point_pos;
       /***/
-      if (is_training_ != 0) {
+      if (is_training_ == 0) {
           log_file_ << trial_idx_ - cnt_training << ","
-              << active_surface_ << ","
+              << active_surface_ + 1 << ","
               << active_point_x_ << ","
               << active_point_y_ << ","
               << multimodal_feedback_ << ","
