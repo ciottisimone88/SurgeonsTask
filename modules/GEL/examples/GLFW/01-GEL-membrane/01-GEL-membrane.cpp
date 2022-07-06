@@ -165,7 +165,9 @@ const double kGEMSphereRadius_{ 0.05 };
 const double kScalpelStartPosRadius_{ 0.05 };
 const double kActivePointRadius_{ 0.05 };
 const double kScalpelHPRadius_{ 0.005 };
-const cMatrix3d kActivePointRewardGain_{ cVector3d(4.0, 2.0, 4.0), cVector3d(2.0, 1.0, 2.0), cVector3d(4.0, 2.0, 4.0) };
+const cMatrix3d kNinePointsStencilActivePointRewardGain_{ cVector3d(4.0, 2.0, 4.0), cVector3d(2.0, 1.0, 2.0), cVector3d(4.0, 2.0, 4.0) };
+const cMatrix3d kFivePointsStencilActivePointRewardGain_{ cVector3d(2.0, 0.0, 2.0), cVector3d(0.0, 1.0, 0.0), cVector3d(2.0, 0.0, 2.0) };
+cMatrix3d active_point_reward_gain_;
 std::vector<std::vector<std::int32_t>> stimuli_(0);
 nlohmann::json config_file_json_;
 std::ifstream config_file_("./config.json");
@@ -194,6 +196,7 @@ cLabel* label_reward_;
 cLabel* label_lost_reward_;
 double time_to_level_;
 cLabel* label_finished_;
+std::int32_t stencil_points_;
 
 //---------------------------------------------------------------------------
 // GEL
@@ -288,7 +291,8 @@ int main(int argc, char* argv[])
     std::time_t now = time(0);
     std::tm* gmtm = std::gmtime(&now);
     std::string participant_name = config_file_json_["name"].get<std::string>();
-    std::string root_file_name = std::to_string(gmtm->tm_year) + std::to_string(gmtm->tm_mon) + std::to_string(gmtm->tm_mday);
+    //std::string root_file_name = std::to_string(gmtm->tm_year) + std::to_string(gmtm->tm_mon) + std::to_string(gmtm->tm_mday);
+    std::string root_file_name; // empty string
     log_file_name  = root_file_name + participant_name + "_log.csv";
     resp_file_name = root_file_name + participant_name + "_response.csv";
     if (participant_name == "test") {
@@ -302,6 +306,10 @@ int main(int argc, char* argv[])
     max_time_ = config_file_json_["max_time"].get<double>();
     trial_limit_ = config_file_json_["trial_limit"].get<std::int32_t>();
     stiffness_ = config_file_json_["stiffness"].get<std::vector<double>>();
+    stencil_points_ = config_file_json_["stencil_points"].get<std::int32_t>();
+
+    if (stencil_points_ == 5) active_point_reward_gain_ = kFivePointsStencilActivePointRewardGain_;
+    else                      active_point_reward_gain_ = kNinePointsStencilActivePointRewardGain_;
 
     log_file_ << "trial_idx,surface_id,active_region_x,active_region_y,multimodal,stiffness,max_time,max_trial,max_force,"
               << "elap_time,scalpel_x,scalpel_y,scalpel_z,active_point_x,active_point_y,active_point_z,"
@@ -945,7 +953,7 @@ void updateGraphics(void)
 
     label_lost_reward_->setLocalPos(1.2 * w_coin, 0.8 * h_coin / 2.0);
 
-    level_time_->setLocalPos(0.70 * width, 0.93 * height);
+    level_time_->setLocalPos(0.70 * width, 0.85 * height);
     
     level_time_->setValue(time_to_level_ * exec_timer_.getCurrentTimeSeconds());
 
@@ -1030,32 +1038,33 @@ void updateHaptics(void)
   active_point_x_       = stimuli_[trial_idx_][1];
   active_point_y_       = stimuli_[trial_idx_][2];
   multimodal_feedback_  = stimuli_[trial_idx_][3];
-  active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
+  if (stencil_points_ != 5) active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
+  else active_point_->setLocalPos(6.0 * kGEMSphereRadius_ * active_point_x_, 6.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
   active_point_->computeGlobalPositionsFromRoot();
-  //active_point_start_pos = active_point_->getGlobalPos();
+  /****/
   switch (active_point_x_) {
       case -1:
-          node_coord_x = 2;
-          break;
+        node_coord_x = (stencil_points_ != 5) ? 2 : 3;
+        break;
       case 0:
-          node_coord_x = 6;
-          break;
+        node_coord_x = 6;
+        break;
       case 1:
-          node_coord_x = 10;
-          break;
+        node_coord_x = (stencil_points_ != 5) ? 10 : 9;
+        break;
       default: break;
   }
   /***/
   switch (active_point_y_) {
       case -1:
-          node_coord_y = 2;
-          break;
+        node_coord_y = (stencil_points_ != 5) ? 2 : 3;
+        break;
       case 0:
-          node_coord_y = 6;
-          break;
+        node_coord_y = 6;
+        break;
       case 1:
-          node_coord_y = 10;
-          break;
+        node_coord_y = (stencil_points_ != 5) ? 10 : 9;
+        break;
       default: break;
   }
   /***/
@@ -1171,38 +1180,37 @@ void updateHaptics(void)
       level_time_->setEnabled(false);
       /***/
       scalpel_hp_pos = scalpel_hp_->getGlobalPos();
-      //active_point_pos = active_point_->getGlobalPos();
       /***/
       switch (active_point_x_) {
-      case -1:
-          node_coord_x = 2;
-          active_point_col_gain = kActivePointRewardGain_.getCol0();
+        case -1:
+          node_coord_x = (stencil_points_ != 5) ? 2 : 3;
+          active_point_col_gain  = active_point_reward_gain_.getCol0();
           break;
-      case 0:
+        case 0:
           node_coord_x = 6;
-          active_point_col_gain = kActivePointRewardGain_.getCol1();
+          active_point_col_gain  = active_point_reward_gain_.getCol1();
           break;
-      case 1:
-          node_coord_x = 10;
-          active_point_col_gain = kActivePointRewardGain_.getCol2();
+        case 1:
+          node_coord_x = (stencil_points_ != 5) ? 10 : 9;
+          active_point_col_gain  = active_point_reward_gain_.getCol2();
           break;
-      default: break;
+        default: break;
       }
       /***/
       switch (active_point_y_) {
-      case -1:
-          node_coord_y = 2;
+        case -1:
+          node_coord_y = (stencil_points_ != 5) ? 2 : 3;
           active_point_gain = active_point_col_gain.x();
           break;
-      case 0:
+        case 0:
           node_coord_y = 6;
           active_point_gain = active_point_col_gain.y();
           break;
-      case 1:
-          node_coord_y = 10;
+        case 1:
+          node_coord_y = (stencil_points_ != 5) ? 10 : 9;
           active_point_gain = active_point_col_gain.z();
           break;
-      default: break;
+        default: break;
       }
       /***/
       node_coord_z = 0;
@@ -1271,33 +1279,33 @@ void updateHaptics(void)
         active_point_x_      = stimuli_[trial_idx_][1];
         active_point_y_      = stimuli_[trial_idx_][2];
         multimodal_feedback_ = stimuli_[trial_idx_][3];
-        active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
-        // active_point_->computeGlobalPositionsFromRoot();
-        // active_point_start_pos = active_point_->getGlobalPos();
+        if (stencil_points_ != 5) active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
+        else active_point_->setLocalPos(6.0 * kGEMSphereRadius_ * active_point_x_, 6.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
+        /***/
         switch (active_point_x_) {
-            case -1:
-                node_coord_x = 2;
-                break;
-            case 0:
-                node_coord_x = 6;
-                break;
-            case 1:
-                node_coord_x = 10;
-                break;
-            default: break;
+          case -1:
+            node_coord_x = (stencil_points_ != 5) ? 2 : 3;
+            break;
+          case 0:
+            node_coord_x = 6;
+            break;
+          case 1:
+            node_coord_x = (stencil_points_ != 5) ? 10 : 9;
+            break;
+          default: break;
         }
         /***/
         switch (active_point_y_) {
-        case -1:
-            node_coord_y = 2;
+          case -1:
+            node_coord_y = (stencil_points_ != 5) ? 2 : 3;
             break;
-        case 0:
+          case 0:
             node_coord_y = 6;
             break;
-        case 1:
-            node_coord_y = 10;
+          case 1:
+            node_coord_y = (stencil_points_ != 5) ? 10 : 9;
             break;
-        default: break;
+          default: break;
         }
         /***/
         node_coord_z = 0;
@@ -1315,31 +1323,31 @@ void updateHaptics(void)
     if (trial_started_) {
       /***/
       scalpel_hp_pos = scalpel_hp_->getGlobalPos();
-      //active_point_pos = active_point_->getGlobalPos();
+      /****/
       switch (active_point_x_) {
-      case -1:
-          node_coord_x = 2;
+        case -1:
+          node_coord_x = (stencil_points_ != 5) ? 2 : 3;
           break;
-      case 0:
+        case 0:
           node_coord_x = 6;
           break;
-      case 1:
-          node_coord_x = 10;
+        case 1:
+          node_coord_x = (stencil_points_ != 5) ? 10 : 9;
           break;
-      default: break;
+        default: break;
       }
       /***/
       switch (active_point_y_) {
-      case -1:
-          node_coord_y = 2;
+        case -1:
+          node_coord_y = (stencil_points_ != 5) ? 2 : 3;
           break;
-      case 0:
+        case 0:
           node_coord_y = 6;
           break;
-      case 1:
-          node_coord_y = 10;
+        case 1:
+          node_coord_y = (stencil_points_ != 5) ? 10 : 9;
           break;
-      default: break;
+        default: break;
       }
       /***/
       node_coord_z = 0;
