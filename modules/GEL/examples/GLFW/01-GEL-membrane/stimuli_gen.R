@@ -26,7 +26,7 @@ stimuli_random <- stimuli[trial_order,] %>%
 
 if (stencil_points == 5) {
   stimuli_random <- stimuli_random %>%
-    dplyr::filter(x == 0 | y == 0)
+    dplyr::filter((x == 0 & y != 0) | (x != 0 & y == 0))
 }
 
 write_csv(stimuli_random, "stimuli.csv")

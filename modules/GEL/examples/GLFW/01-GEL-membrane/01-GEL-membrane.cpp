@@ -197,6 +197,7 @@ cLabel* label_lost_reward_;
 double time_to_level_;
 cLabel* label_finished_;
 std::int32_t stencil_points_;
+std::int32_t is_training_;
 
 //---------------------------------------------------------------------------
 // GEL
@@ -312,13 +313,13 @@ int main(int argc, char* argv[])
     else                      active_point_reward_gain_ = kNinePointsStencilActivePointRewardGain_;
 
     log_file_ << "trial_idx,surface_id,active_region_x,active_region_y,multimodal,stiffness,max_time,max_trial,max_force,"
-              << "elap_time,scalpel_x,scalpel_y,scalpel_z,active_point_x,active_point_y,active_point_z,"
+              << "elap_time,scalpel_x,scalpel_y,scalpel_z,active_point_start_pos_x,active_point_start_pos_y,active_point_start_pos_z,active_point_x,active_point_y,active_point_z,"
               << "active_point_def_x,active_point_def_y,active_point_def_z,"
               << "force_x,force_y,force_z,"
               << "scalpel_vel_x,scalpel_vel_y,scalepl_vel_z\n";
 
     response_file_  << "trial_idx,surface_id,active_region_x,active_region_y,multimodal,stiffness,max_time,max_trial,max_force,"
-                    << "elap_time,scalpel_x,scalpel_y,scalpel_z,active_point_x,active_point_y,active_point_z,"
+                    << "elap_time,scalpel_x,scalpel_y,scalpel_z,active_point_gain,active_point_x,active_point_y,active_point_z,"
                     << "active_point_def_x,active_point_def_y,active_point_def_z,"
                     << "force_x,force_y,force_z,"
                     << "reward,lost_reward,total_reward,total_lost_reward,"
@@ -719,7 +720,7 @@ int main(int argc, char* argv[])
     label_finished_->m_fontColor.setBlack();
     label_finished_->setColor(cColorf(0.0, 0.0, 0.0));
     label_finished_->setEnabled(false);
-    label_finished_->setText("Esperimento Terminato");
+    label_finished_->setText("ESPERIMENTO TERMINATO");
 
     // create a background
     cBackground* background = new cBackground();
@@ -957,6 +958,8 @@ void updateGraphics(void)
     
     level_time_->setValue(time_to_level_ * exec_timer_.getCurrentTimeSeconds());
 
+    label_finished_->setLocalPos((width - label_finished_->getWidth()) / 2, (height - label_finished_->getHeight()) / 2);
+
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
     /////////////////////////////////////////////////////////////////////
@@ -1011,8 +1014,12 @@ void updateHaptics(void)
   std::int32_t node_coord_y;
   std::int32_t node_coord_z{ 0 };
 
+  std::int32_t cnt_training;
+
   cVector3d active_point_col_gain;
   double active_point_gain;
+
+  bool first_trial;
 
   // initialize precision clock
   cPrecisionClock clock;
@@ -1024,6 +1031,8 @@ void updateHaptics(void)
   simulationRunning  = true;
   simulationFinished = false;
 
+  first_trial = true;
+  cnt_training = 0;
   force_over_limit_     = false;
   max_trial_reached_    = false;
   max_time_reached_     = false;
@@ -1038,6 +1047,11 @@ void updateHaptics(void)
   active_point_x_       = stimuli_[trial_idx_][1];
   active_point_y_       = stimuli_[trial_idx_][2];
   multimodal_feedback_  = stimuli_[trial_idx_][3];
+  is_training_ = stimuli_[trial_idx_][4];
+  /***/
+  if (is_training_ == 0) cnt_training++;
+  else first_trial = false;
+  /***/
   if (stencil_points_ != 5) active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
   else active_point_->setLocalPos(6.0 * kGEMSphereRadius_ * active_point_x_, 6.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
   active_point_->computeGlobalPositionsFromRoot();
@@ -1224,10 +1238,17 @@ void updateHaptics(void)
         reward_ = active_point_gain * active_point_def.length();
         lost_reward_ = 0.0;
       } else {
-        Beep(300, 250);
         lost_trial_++;
         reward_ = 0;
         lost_reward_ = active_point_gain * active_point_def.length();
+      }
+      /****/
+      if (lost_trial_ >= trial_limit_) {
+        Beep(800, 250);
+      } else {
+          if (force_over_limit_ || max_time_reached_) {
+              Beep(500, 250);
+          }
       }
       /****/
       if (lost_trial_ >= trial_limit_) {
@@ -1241,35 +1262,38 @@ void updateHaptics(void)
         max_trial_reached_ = false;
       }
       /***/
-      response_file_  << trial_idx_                           << ","
-                      << active_surface_                      << ","
-                      << active_point_x_                      << ","
-                      << active_point_y_                      << ","
-                      << multimodal_feedback_                 << ","
-                      << stiffness_[active_surface_]          << ","
-                      << max_time_                            << ","
-                      << trial_limit_                         << ","
-                      << max_force_[active_surface_]          << ","
-                      << exec_timer_.getCurrentTimeSeconds()  << ","
-                      << scalpel_hp_pos.x()                   << ","
-                      << scalpel_hp_pos.y()                   << ","
-                      << scalpel_hp_pos.z()                   << ","
-                      << active_point_pos.x()                 << ","
-                      << active_point_pos.y()                 << ","
-                      << active_point_pos.z()                 << ","
-                      << active_point_def.x()                 << ","
-                      << active_point_def.y()                 << ","
-                      << active_point_def.z()                 << ","
-                      << force.x()                            << ","
-                      << force.y()                            << ","
-                      << force.z()                            << ","
-                      << reward_                              << ","
-                      << lost_reward_                         << ","
-                      << tot_reward_                          << ","
-                      << tot_lost_reward_                     << ","
-                      << force_over_limit_                    << ","
-                      << max_time_reached_                    << ","
-                      << max_trial_reached_                   << "\n";
+      if (is_training_ != 0) {
+          response_file_ << trial_idx_ - cnt_training << ","
+              << active_surface_ << ","
+              << active_point_x_ << ","
+              << active_point_y_ << ","
+              << multimodal_feedback_ << ","
+              << stiffness_[active_surface_] << ","
+              << max_time_ << ","
+              << trial_limit_ << ","
+              << max_force_[active_surface_] << ","
+              << exec_timer_.getCurrentTimeSeconds() << ","
+              << scalpel_hp_pos.x() << ","
+              << scalpel_hp_pos.y() << ","
+              << scalpel_hp_pos.z() << ","
+              << active_point_gain << ","
+              << active_point_pos.x() << ","
+              << active_point_pos.y() << ","
+              << active_point_pos.z() << ","
+              << active_point_def.x() << ","
+              << active_point_def.y() << ","
+              << active_point_def.z() << ","
+              << force.x() << ","
+              << force.y() << ","
+              << force.z() << ","
+              << reward_ << ","
+              << lost_reward_ << ","
+              << tot_reward_ << ","
+              << tot_lost_reward_ << ","
+              << force_over_limit_ << ","
+              << max_time_reached_ << ","
+              << max_trial_reached_ << "\n";
+      }
       /****/
       trial_started_ = false;
       /***/
@@ -1279,6 +1303,17 @@ void updateHaptics(void)
         active_point_x_      = stimuli_[trial_idx_][1];
         active_point_y_      = stimuli_[trial_idx_][2];
         multimodal_feedback_ = stimuli_[trial_idx_][3];
+        is_training_ = stimuli_[trial_idx_][4];
+        /****/
+        if (is_training_ == 0) cnt_training++;
+        /***/
+        if (first_trial && is_training_ == 1) {
+            tot_reward_ = 0.0;
+            tot_lost_reward_ = 0.0;
+            lost_trial_ = 0;
+            first_trial = false;
+        }
+        /****/
         if (stencil_points_ != 5) active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
         else active_point_->setLocalPos(6.0 * kGEMSphereRadius_ * active_point_x_, 6.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
         /***/
@@ -1356,31 +1391,36 @@ void updateHaptics(void)
       /***/
       active_point_def = active_point_start_pos - active_point_pos;
       /***/
-      log_file_   << trial_idx_                           << ","
-                  << active_surface_                      << ","
-                  << active_point_x_                      << ","
-                  << active_point_y_                      << ","
-                  << multimodal_feedback_                 << ","
-                  << stiffness_[active_surface_]          << ","
-                  << max_time_                            << ","
-                  << trial_limit_                         << ","
-                  << max_force_[active_surface_]          << ","
-                  << exec_timer_.getCurrentTimeSeconds()  << ","
-                  << scalpel_hp_pos.x()                   << ","
-                  << scalpel_hp_pos.y()                   << ","
-                  << scalpel_hp_pos.z()                   << ","
-                  << active_point_pos.x()                 << ","
-                  << active_point_pos.y()                 << ","
-                  << active_point_pos.z()                 << ","
-                  << active_point_def.x()                 << ","
-                  << active_point_def.y()                 << ","
-                  << active_point_def.z()                 << ","
-                  << force.x()                            << ","
-                  << force.y()                            << ","
-                  << force.z()                            << ","
-                  << haptic_device_vel.x()                << ","
-                  << haptic_device_vel.y()                << ","
-                  << haptic_device_vel.z()                << "\n";
+      if (is_training_ != 0) {
+          log_file_ << trial_idx_ - cnt_training << ","
+              << active_surface_ << ","
+              << active_point_x_ << ","
+              << active_point_y_ << ","
+              << multimodal_feedback_ << ","
+              << stiffness_[active_surface_] << ","
+              << max_time_ << ","
+              << trial_limit_ << ","
+              << max_force_[active_surface_] << ","
+              << exec_timer_.getCurrentTimeSeconds() << ","
+              << scalpel_hp_pos.x() << ","
+              << scalpel_hp_pos.y() << ","
+              << scalpel_hp_pos.z() << ","
+              << active_point_start_pos.x() << ","
+              << active_point_start_pos.y() << ","
+              << active_point_start_pos.z() << ","
+              << active_point_pos.x() << ","
+              << active_point_pos.y() << ","
+              << active_point_pos.z() << ","
+              << active_point_def.x() << ","
+              << active_point_def.y() << ","
+              << active_point_def.z() << ","
+              << force.x() << ","
+              << force.y() << ","
+              << force.z() << ","
+              << haptic_device_vel.x() << ","
+              << haptic_device_vel.y() << ","
+              << haptic_device_vel.z() << "\n";
+      }
     }
     /****/
     if (multimodal_feedback_ == 0 || !trial_started_) force.zero();
