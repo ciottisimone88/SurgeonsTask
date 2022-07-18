@@ -1,3 +1,6 @@
+Video e foto da mettere nella seconda slide
+Togliere bordo finestra
+
 
 
 CHAI3D - The Open Source Haptic Framework

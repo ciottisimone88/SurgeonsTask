@@ -690,7 +690,7 @@ int main(int argc, char* argv[])
     testo_inst += "Se invece lei oltrepassa il punto di rottura della lastra, o impiega piu' di 5 secondi per deformare la lastra senza premere uno dei tasti,\n";
     testo_inst += "la singola prova sara' considerata fallita, e le verranno assegnate le monete rosse.\n";
     testo_inst += "Quando fallisce la prova, sentira' un suono basso; quando vince, sentira' un suono acuto.\n";
-    testo_inst += "Superata la soglia di 10 errori, il suo guadagno cumulato sara' totalmente perso e sentrira' un suono basso di durata maggiore,\n";
+    testo_inst += "Superata la soglia di 10 errori, il suo guadagno cumulato sara' totalmente perso e sentira' un suono basso di durata maggiore,\n";
     testo_inst += "e dovra' ricominciare a guadagnare le monete verdi.\n\n";
     testo_inst += "Adesso iniziera' una breve fase di training che servira' a prendere dimestichezza con il compito stesso.\n";
     testo_inst += "Successivamente, iniziera' il compito vero e proprio.\n\n";
