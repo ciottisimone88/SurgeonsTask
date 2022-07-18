@@ -148,6 +148,8 @@ bool max_time_reached_{ false };
 bool trial_started_{ false };
 std::int32_t lost_trial_{ 0 };
 cPrecisionClock exec_timer_;
+double start_time_;
+double current_time_;
 const std::int16_t kNumInst_{ 2 };
 std::int16_t show_inst_cnt_{ 0 };
 cLabel* label_inst_[kNumInst_];
@@ -199,6 +201,7 @@ cLabel* label_finished_;
 cLabel* label_is_training_;
 std::int32_t stencil_points_;
 std::int32_t is_training_;
+std::int32_t cnt_training_;
 
 //---------------------------------------------------------------------------
 // GEL
@@ -738,7 +741,7 @@ int main(int argc, char* argv[])
     label_is_training_->m_fontColor.setBlack();
     label_is_training_->setColor(cColorf(0.0, 0.0, 0.0));
     label_is_training_->setEnabled(false);
-    label_is_training_->setText("FASE DI TRAINING");
+    label_is_training_->setText("FASE DI TRAINING - STIMOLO " + std::to_string(cnt_training_) + "/8");
 
     // create a background
     cBackground* background = new cBackground();
@@ -749,7 +752,6 @@ int main(int argc, char* argv[])
                                 cColorf(0.95f, 0.95f, 0.95f),
                                 cColorf(0.85f, 0.85f, 0.85f),
                                 cColorf(0.80f, 0.80f, 0.80f));
-
 
     //-----------------------------------------------------------------------
     // START SIMULATION
@@ -957,7 +959,6 @@ void updateGraphics(void)
 
     if (show_inst_cnt_ < kNumInst_) {
       for (std::int32_t i = 0; i < kNumInst_; ++i) {
-        //label_inst_[i]->setLocalPos((width - label_inst_[i]->getWidth()) / 2.0, (height - label_inst_[i]->getHeight()) / 2.0);
         label_inst_[i]->setLocalPos(20.0, (height - label_inst_[i]->getHeight()) / 2.0);
       }
     }
@@ -976,11 +977,13 @@ void updateGraphics(void)
 
     level_time_->setLocalPos(0.70 * width, 0.85 * height);
     
-    level_time_->setValue(time_to_level_ * exec_timer_.getCurrentTimeSeconds());
+    double current_time = exec_timer_.getCurrentTimeSeconds() - start_time_;
+    level_time_->setValue(time_to_level_ * current_time);
 
     label_finished_->setLocalPos((width - label_finished_->getWidth()) / 2, (height - label_finished_->getHeight()) / 2);
 
     label_is_training_->setLocalPos((width - label_is_training_->getWidth()) / 2, label_is_training_->getHeight());
+    label_is_training_->setText("FASE DI TRAINING - STIMOLO " + std::to_string(cnt_training_) + "/8");
 
     /////////////////////////////////////////////////////////////////////
     // UPDATE DEFORMABLE MODELS
@@ -1036,8 +1039,6 @@ void updateHaptics(void)
   std::int32_t node_coord_y;
   std::int32_t node_coord_z{ 0 };
 
-  std::int32_t cnt_training;
-
   cVector3d active_point_col_gain;
   double active_point_gain;
 
@@ -1054,7 +1055,7 @@ void updateHaptics(void)
   simulationFinished = false;
 
   first_trial = true;
-  cnt_training = 0;
+  cnt_training_ = 0;
   force_over_limit_     = false;
   max_trial_reached_    = false;
   max_time_reached_     = false;
@@ -1065,18 +1066,15 @@ void updateHaptics(void)
   lost_reward_          = 0.0;
   lost_trial_           = 0;
   trial_idx_            = 0;
+  start_time_ = 0;
+  current_time_ = 0;
   active_surface_       = stimuli_[trial_idx_][0] - 1;
   active_point_x_       = stimuli_[trial_idx_][1];
   active_point_y_       = stimuli_[trial_idx_][2];
   multimodal_feedback_  = stimuli_[trial_idx_][3];
   is_training_          = stimuli_[trial_idx_][4];
   /***/
-  cnt_training++;
-  /*if (is_training_ == 1) cnt_training++;
-  else {
-      label_is_training_->setEnabled(false);
-      first_trial = false;
-  }*/
+  cnt_training_++;
   /***/
   if (stencil_points_ != 5) active_point_->setLocalPos(8.0 * kGEMSphereRadius_ * active_point_x_, 8.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
   else active_point_->setLocalPos(6.0 * kGEMSphereRadius_ * active_point_x_, 6.0 * kGEMSphereRadius_ * active_point_y_, kGEMSphereRadius_);
@@ -1159,7 +1157,6 @@ void updateHaptics(void)
         def_surf_[active_surface_]->setEnabled(true);
         active_point_->setEnabled(true);
       } 
-      //if (!scalpel_start_pos_->getEnabled() && fabs(scalpel_start_pos_->getLocalPos().z() - scalpel_hp_->getGlobalPos().z()) > 4.0 * kScalpelStartPosRadius_) {
       if (!scalpel_start_pos_->getEnabled() && fabs(active_point_->getGlobalPos().z() - scalpel_hp_->getGlobalPos().z()) <= kScalpelStartPosRadius_) {
         active_point_->setEnabled(false);
         trial_started_ = true;
@@ -1168,6 +1165,7 @@ void updateHaptics(void)
         level_time_->setValue(level_time_->getRangeMin());
         level_time_->setEnabled(true);
         exec_timer_.start(true);
+        start_time_ = exec_timer_.getCurrentTimeSeconds();
       }
       // clear all external forces
       defWorld->clearExternalForces();
@@ -1208,7 +1206,8 @@ void updateHaptics(void)
         user_switches = 1;
     }
 
-    if (exec_timer_.getCurrentTimeSeconds() > max_time_) {
+    current_time_ = exec_timer_.getCurrentTimeSeconds() - start_time_;
+    if (current_time_ > max_time_) {
       max_time_reached_ = true;
       user_switches = 1;
     }
@@ -1289,7 +1288,9 @@ void updateHaptics(void)
       }
       /***/
       if (is_training_ == 0) {
-          response_file_ << trial_idx_ - cnt_training << ","
+          current_time_ = exec_timer_.getCurrentTimeSeconds() - start_time_;
+          /***/
+          response_file_ << trial_idx_ - cnt_training_ + 1 << ","
               << active_surface_ + 1 << ","
               << active_point_x_ << ","
               << active_point_y_ << ","
@@ -1298,7 +1299,7 @@ void updateHaptics(void)
               << max_time_ << ","
               << trial_limit_ << ","
               << max_force_[active_surface_] << ","
-              << exec_timer_.getCurrentTimeSeconds() << ","
+              << current_time_ << ","
               << scalpel_hp_pos.x() << ","
               << scalpel_hp_pos.y() << ","
               << scalpel_hp_pos.z() << ","
@@ -1331,7 +1332,7 @@ void updateHaptics(void)
         multimodal_feedback_ = stimuli_[trial_idx_][3];
         is_training_ = stimuli_[trial_idx_][4];
         /****/
-        if (is_training_ == 1) cnt_training++;
+        if (is_training_ == 1) cnt_training_++;
         /***/
         if (first_trial && is_training_ == 0) {
             tot_reward_ = 0.0;
@@ -1419,7 +1420,9 @@ void updateHaptics(void)
       active_point_def = active_point_start_pos - active_point_pos;
       /***/
       if (is_training_ == 0) {
-          log_file_ << trial_idx_ - cnt_training << ","
+          current_time_ = exec_timer_.getCurrentTimeSeconds() - start_time_;
+          /***/
+          log_file_ << trial_idx_ - cnt_training_ + 1 << ","
               << active_surface_ + 1 << ","
               << active_point_x_ << ","
               << active_point_y_ << ","
@@ -1428,7 +1431,7 @@ void updateHaptics(void)
               << max_time_ << ","
               << trial_limit_ << ","
               << max_force_[active_surface_] << ","
-              << exec_timer_.getCurrentTimeSeconds() << ","
+              << current_time_ << ","
               << scalpel_hp_pos.x() << ","
               << scalpel_hp_pos.y() << ","
               << scalpel_hp_pos.z() << ","
