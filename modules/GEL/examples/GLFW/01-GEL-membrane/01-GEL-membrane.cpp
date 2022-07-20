@@ -54,6 +54,8 @@
 #include <string>
 #include <sstream>
 #include <ctime>
+#include <ratio>
+#include <chrono>
 #include <windows.h>
 
 //------------------------------------------------------------------------------
@@ -147,9 +149,10 @@ bool max_trial_reached_{ false };
 bool max_time_reached_{ false };
 bool trial_started_{ false };
 std::int32_t lost_trial_{ 0 };
-cPrecisionClock exec_timer_;
-double start_time_;
-double current_time_;
+//cPrecisionClock exec_timer_;
+// double start_time_;
+// double current_time_;
+std::chrono::high_resolution_clock::time_point start_time_;
 const std::int16_t kNumInst_{ 2 };
 std::int16_t show_inst_cnt_{ 0 };
 cLabel* label_inst_[kNumInst_];
@@ -977,8 +980,9 @@ void updateGraphics(void)
 
     level_time_->setLocalPos(0.70 * width, 0.85 * height);
     
-    double current_time = exec_timer_.getCurrentTimeSeconds() - start_time_;
-    level_time_->setValue(time_to_level_ * current_time);
+    std::chrono::high_resolution_clock::time_point t_now = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t_now - start_time_);
+    level_time_->setValue(time_to_level_ * time_span.count());
 
     label_finished_->setLocalPos((width - label_finished_->getWidth()) / 2, (height - label_finished_->getHeight()) / 2);
 
@@ -1048,7 +1052,7 @@ void updateHaptics(void)
   cPrecisionClock clock;
   clock.reset();
 
-  exec_timer_.reset();
+  //exec_timer_.reset();
 
   // simulation in now running
   simulationRunning  = true;
@@ -1066,8 +1070,8 @@ void updateHaptics(void)
   lost_reward_          = 0.0;
   lost_trial_           = 0;
   trial_idx_            = 0;
-  start_time_ = 0;
-  current_time_ = 0;
+  //start_time_ = 0;
+  //current_time_ = 0;
   active_surface_       = stimuli_[trial_idx_][0] - 1;
   active_point_x_       = stimuli_[trial_idx_][1];
   active_point_y_       = stimuli_[trial_idx_][2];
@@ -1164,8 +1168,8 @@ void updateHaptics(void)
         max_time_reached_ = false;
         level_time_->setValue(level_time_->getRangeMin());
         level_time_->setEnabled(true);
-        exec_timer_.start(true);
-        start_time_ = exec_timer_.getCurrentTimeSeconds();
+        //exec_timer_.start(true);
+        start_time_ = std::chrono::high_resolution_clock::now();
       }
       // clear all external forces
       defWorld->clearExternalForces();
@@ -1206,8 +1210,9 @@ void updateHaptics(void)
         user_switches = 1;
     }
 
-    current_time_ = exec_timer_.getCurrentTimeSeconds() - start_time_;
-    if (current_time_ > max_time_) {
+    std::chrono::high_resolution_clock::time_point t_now = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t_now - start_time_);
+    if (time_span.count() > max_time_) {
       max_time_reached_ = true;
       user_switches = 1;
     }
@@ -1288,7 +1293,6 @@ void updateHaptics(void)
       }
       /***/
       if (is_training_ == 0) {
-          current_time_ = exec_timer_.getCurrentTimeSeconds() - start_time_;
           /***/
           response_file_ << trial_idx_ - cnt_training_ + 1 << ","
               << active_surface_ + 1 << ","
@@ -1299,7 +1303,7 @@ void updateHaptics(void)
               << max_time_ << ","
               << trial_limit_ << ","
               << max_force_[active_surface_] << ","
-              << current_time_ << ","
+              << time_span.count() << ","
               << scalpel_hp_pos.x() << ","
               << scalpel_hp_pos.y() << ","
               << scalpel_hp_pos.z() << ","
@@ -1420,7 +1424,6 @@ void updateHaptics(void)
       active_point_def = active_point_start_pos - active_point_pos;
       /***/
       if (is_training_ == 0) {
-          current_time_ = exec_timer_.getCurrentTimeSeconds() - start_time_;
           /***/
           log_file_ << trial_idx_ - cnt_training_ + 1 << ","
               << active_surface_ + 1 << ","
@@ -1431,7 +1434,7 @@ void updateHaptics(void)
               << max_time_ << ","
               << trial_limit_ << ","
               << max_force_[active_surface_] << ","
-              << current_time_ << ","
+              << time_span.count() << ","
               << scalpel_hp_pos.x() << ","
               << scalpel_hp_pos.y() << ","
               << scalpel_hp_pos.z() << ","
