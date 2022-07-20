@@ -788,7 +788,7 @@ int main(int argc, char* argv[])
 
         // process events
         glfwPollEvents();
-        
+
         // signal frequency counter
         freqCounterGraphics.signal(1);
     }
