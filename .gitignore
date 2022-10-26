@@ -36,7 +36,5 @@ obj/
 lib/
 doc/
 
-*.sln
-*.vcxproj
 *.vcxproj.*
 .vs
