@@ -1,0 +1,8 @@
+{
+  "name": "test",
+  "force_limit": [1.0,2.0],
+  "max_time": 10,
+  "trial_limit": 10,
+  "stiffness": [150,300],
+  "stencil_points":5
+}

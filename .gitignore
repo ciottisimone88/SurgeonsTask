@@ -31,7 +31,8 @@
 *.out
 *.app
 
-bin/
+bin/win-Win32/
+bin/win-x64/
 obj/
 lib/
 doc/
